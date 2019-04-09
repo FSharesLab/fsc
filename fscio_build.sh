@@ -48,7 +48,7 @@
    DISK_MIN=20
    DOXYGEN=false
    ENABLE_COVERAGE_TESTING=false
-   CORE_SYMBOL_NAME="FSC"
+   CORE_SYMBOL_NAME="SYS"
    # Use current directory's tmp directory if noexec is enabled for /tmp
    if (mount | grep "/tmp " | grep --quiet noexec); then
         mkdir -p $SOURCE_DIR/tmp
@@ -301,8 +301,4 @@
    print_instructions
 
    printf "\\tFor more information:\\n"
-   printf "\\tFSCIO website: https://fsc.io\\n"
-   printf "\\tFSCIO Telegram channel @ https://t.me/FSCProject\\n"
-   printf "\\tFSCIO resources: https://fsc.io/resources/\\n"
-   printf "\\tFSCIO Stack Exchange: https://fscio.stackexchange.com\\n"
-   printf "\\tFSCIO wiki: https://github.com/FutureSharesCloud/fsc/wiki\\n\\n\\n"
+   printf "\\tFSCIO website: https://www.fshares.io\\n"

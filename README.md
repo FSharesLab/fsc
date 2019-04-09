@@ -1,8 +1,6 @@
 
 # FSCIO - The Most Powerful Infrastructure for Decentralized Applications
 
-[![Build status](https://badge.buildkite.com/370fe5c79410f7d695e4e34c500b4e86e3ac021c6b1f739e20.svg?branch=master)](https://buildkite.com/FSCIO/fscio)
-
 Welcome to the FSCIO source code repository! This software enables businesses to rapidly build and deploy high-performance and high-security blockchain-based applications.
 
 Some of the groundbreaking features of FSCIO include:
@@ -24,50 +22,22 @@ FSCIO is released under the open source MIT license and is offered “AS IS” w
 
 Block.one is neither launching nor operating any initial public blockchains based upon the FSCIO software. This release refers only to version 1.0 of our open source software. We caution those who wish to use blockchains built on FSCIO to carefully vet the companies and organizations launching blockchains based on FSCIO before disclosing any private keys to their derivative software. 
 
-There is no public testnet running currently.
+#### Build FSCIO 
+```sh
+$ git clone https://github.com/FutureSharesCloud/fsc.git
+$ cd fsc
+$ ./fscio_build.sh
+```
 
-**If you have previously installed FSCIO, please run the `fscio_uninstall` script (it is in the directory where you cloned FSCIO) before downloading and using the binary releases.**
+#### Install FSCIO
+```sh
+$ ./fscio_install.sh
+```
 
-#### Mac OS X Brew Install
+#### Uninstall FSCIO
 ```sh
-$ brew tap fscio/fscio
-$ brew install fscio
-```
-#### Mac OS X Brew Uninstall
-```sh
-$ brew remove fscio
-```
-#### Ubuntu 18.04 Debian Package Install
-```sh
-$ wget https://github.com/fscio/fsc/releases/download/v1.6.1/fscio_1.6.1-1-ubuntu-18.04_amd64.deb
-$ sudo apt install ./fscio_1.6.1-1-ubuntu-18.04_amd64.deb
-```
-#### Ubuntu 16.04 Debian Package Install
-```sh
-$ wget https://github.com/fscio/fsc/releases/download/v1.6.1/fscio_1.6.1-1-ubuntu-16.04_amd64.deb
-$ sudo apt install ./fscio_1.6.1-1-ubuntu-16.04_amd64.deb
-```
-#### Debian Package Uninstall
-```sh
-$ sudo apt remove fscio
-```
-#### Centos RPM Package Install
-```sh
-$ wget https://github.com/fscio/fsc/releases/download/v1.6.1/fscio-1.6.1-1.el7.x86_64.rpm
-$ sudo yum install ./fscio-1.6.1-1.el7.x86_64.rpm
-```
-#### Centos RPM Package Uninstall
-```sh
-$ sudo yum remove fscio.cdt
-```
-#### Fedora RPM Package Install
-```sh
-$ wget https://github.com/fscio/fsc/releases/download/v1.6.1/fscio-1.6.1-1.fc27.x86_64.rpm
-$ sudo yum install ./fscio-1.6.1-1.fc27.x86_64.rpm
-```
-#### Fedora RPM Package Uninstall
-```sh
-$ sudo yum remove fscio.cdt
+$ cd fsc
+$ ./fscio_uninstall.sh
 ```
 
 ## Supported Operating Systems
@@ -81,15 +51,8 @@ FSCIO currently supports the following operating systems:
 7. MacOS Darwin 10.12 and higher (MacOS 10.13.x recommended)
 
 ## Resources
-1. [Website](https://fsc.io)
-1. [Blog](https://medium.com/fscio)
-1. [Developer Portal](https://developers.fsc.io)
-1. [StackExchange for Q&A](https://fscio.stackexchange.com/)
-1. [Community Telegram Group](https://t.me/FSCProject)
-1. [Developer Telegram Group](https://t.me/joinchat/EaEnSUPktgfoI-XPfMYtcQ)
-1. [White Paper](https://github.com/FSCIO/Documentation/blob/master/TechnicalWhitePaper.md)
-1. [Roadmap](https://github.com/FSCIO/Documentation/blob/master/Roadmap.md)
+1. [Website](https://www.fshares.io)
 
 <a name="gettingstarted"></a>
 ## Getting Started
-Instructions detailing the process of getting the software, building it, running a simple test network that produces blocks, account creation and uploading a sample contract to the blockchain can be found in [Getting Started](https://developers.fsc.io/fscio-home/docs) on the [FSCIO Developer Portal](https://developers.fsc.io).
+Instructions detailing the process of getting the software, building it, running a simple test network that produces blocks, account creation and uploading a sample contract to the blockchain can be found on the [Fshares Official Website](https://www.fshares.io).

@@ -114,8 +114,4 @@ fi
    printf "\t(_)        \_______)  (_______/  \_______/   (_______)\n${txtrst}"
 
    printf "\\tFor more information:\\n"
-   printf "\\tFSCIO website: https://fsc.io\\n"
-   printf "\\tFSCIO Telegram channel @ https://t.me/FSCProject\\n"
-   printf "\\tFSCIO resources: https://fsc.io/resources/\\n"
-   printf "\\tFSCIO Stack Exchange: https://fscio.stackexchange.com\\n"
-   printf "\\tFSCIO wiki: https://github.com/FutureSharesCloud/fsc/wiki\\n\\n\\n"
+   printf "\\tFSCIO website: https://www.fshares.io\\n"
