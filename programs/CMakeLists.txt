@@ -1,0 +1,5 @@
+add_subdirectory( nodfsc )
+add_subdirectory( clfsc )
+add_subdirectory( kfscd )
+add_subdirectory( fscio-launcher )
+add_subdirectory( fscio-blocklog )

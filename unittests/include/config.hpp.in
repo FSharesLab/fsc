@@ -1,0 +1,11 @@
+/**
+ *  @file
+ *  @copyright defined in fsc/LICENSE
+ */
+
+namespace fscio { namespace unittests { namespace config {
+   constexpr char fsciolib_path[] = "${CMAKE_CURRENT_SOURCE_DIR}/../contracts";
+   constexpr char core_symbol_path[] = "${CMAKE_BINARY_DIR}/contracts";
+   constexpr char pfr_include_path[] = "${CMAKE_CURRENT_SOURCE_DIR}/../externals/magic_get/include";
+   constexpr char boost_include_path[] = "${Boost_INCLUDE_DIR}";
+}}}

@@ -1,0 +1,74 @@
+steps:
+  - command: |
+        echo "AUTHENTICATING GOOGLE SERVICE ACCOUNT" && \
+        gcloud --quiet auth activate-service-account b1-automation-svc@b1-automation-dev.iam.gserviceaccount.com --key-file=/etc/gcp-service-account.json && \
+        docker-credential-gcr configure-docker && \
+        echo "BUILDING BUILD IMAGE" && \
+        cd Docker/builder && \
+        docker build -t fscio/builder:latest -t fscio/builder:$BUILDKITE_COMMIT . --build-arg branch=$BUILDKITE_COMMIT && \
+        docker tag fscio/builder:$BUILDKITE_COMMIT gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT && \
+        docker tag fscio/builder:latest gcr.io/b1-automation-dev/fscio/builder:latest && \
+        echo "PUSHING DOCKER IMAGES" && \
+        docker push gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT && \
+        docker push gcr.io/b1-automation-dev/fscio/builder:latest && \
+        echo "TRASHING OLD IMAGES" && \
+        docker rmi fscio/builder:$BUILDKITE_COMMIT && \
+        docker rmi fscio/builder:latest && \
+        docker rmi gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT && \
+        docker rmi gcr.io/b1-automation-dev/fscio/builder:latest
+    label: "Docker build builder"
+    agents:
+      queue: "automation-docker-builder-fleet"
+    timeout: 300
+
+  - wait
+
+  - command: |
+        echo "AUTHENTICATING GOOGLE SERVICE ACCOUNT" && \
+        gcloud --quiet auth activate-service-account b1-automation-svc@b1-automation-dev.iam.gserviceaccount.com --key-file=/etc/gcp-service-account.json && \
+        docker-credential-gcr configure-docker && \
+        echo "BUILDING FSC IMAGE" && \
+        docker pull gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT && \
+        cd Docker && \
+        docker build -t fscio/fsc:latest -t fscio/fsc:$BUILDKITE_COMMIT . --build-arg branch=$BUILDKITE_BRANCH && \
+        docker tag fscio/fsc:$BUILDKITE_COMMIT gcr.io/b1-automation-dev/fscio/fsc:$BUILDKITE_COMMIT && \
+        docker tag fscio/fsc:latest gcr.io/b1-automation-dev/fscio/fsc:latest && \
+        echo "PUSHING DOCKER IMAGES" && \
+        docker push gcr.io/b1-automation-dev/fscio/fsc:$BUILDKITE_COMMIT && \
+        docker push gcr.io/b1-automation-dev/fscio/fsc:latest && \
+        echo "TRASHING OLD IMAGES" && \
+        docker rmi fscio/fsc:$BUILDKITE_COMMIT && \
+        docker rmi fscio/fsc:latest && \
+        docker rmi gcr.io/b1-automation-dev/fscio/fsc:$BUILDKITE_COMMIT && \
+        docker rmi gcr.io/b1-automation-dev/fscio/fsc:latest && \
+        docker rmi gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT
+    label: "Docker build fsc"
+    agents:
+      queue: "automation-docker-builder-fleet"
+    timeout: 300
+
+  - command: |
+        echo "AUTHENTICATING GOOGLE SERVICE ACCOUNT" && \
+        gcloud --quiet auth activate-service-account b1-automation-svc@b1-automation-dev.iam.gserviceaccount.com --key-file=/etc/gcp-service-account.json && \
+        docker-credential-gcr configure-docker && \
+        echo "BUILDING FSC DEV IMAGE" && \
+        docker pull gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT && \
+        cd Docker/dev && \
+        docker build -t fscio/fsc-dev:latest -t fscio/fsc-dev:$BUILDKITE_COMMIT . --build-arg branch=$BUILDKITE_BRANCH && \
+        docker tag fscio/fsc-dev:$BUILDKITE_COMMIT gcr.io/b1-automation-dev/fscio/fsc-dev:$BUILDKITE_COMMIT && \
+        docker tag fscio/fsc-dev:latest gcr.io/b1-automation-dev/fscio/fsc-dev:latest && \
+        echo "PUSHING DOCKER IMAGES" && \
+        docker push gcr.io/b1-automation-dev/fscio/fsc-dev:$BUILDKITE_COMMIT && \
+        docker push gcr.io/b1-automation-dev/fscio/fsc-dev:latest && \
+        echo "TRASHING OLD IMAGES" && \
+        docker rmi fscio/fsc-dev:$BUILDKITE_COMMIT && \
+        docker rmi fscio/fsc-dev:latest && \
+        docker rmi gcr.io/b1-automation-dev/fscio/fsc-dev:$BUILDKITE_COMMIT && \
+        docker rmi gcr.io/b1-automation-dev/fscio/fsc-dev:latest && \
+        docker rmi gcr.io/b1-automation-dev/fscio/builder:$BUILDKITE_COMMIT
+    label: "Docker build fsc-dev"
+    agents:
+      queue: "automation-docker-builder-fleet"
+    timeout: 300
+
+  - wait

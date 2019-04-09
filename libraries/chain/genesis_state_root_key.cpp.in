@@ -1,0 +1,12 @@
+/**
+ *  @file
+ *  @copyright defined in fsc/LICENSE
+ */
+
+#include <fscio/chain/genesis_state.hpp>
+
+namespace fscio { namespace chain {
+
+const string genesis_state::fscio_root_key = "${FSCIO_ROOT_KEY}";
+
+} } // namespace fscio::chain
