@@ -18,6 +18,7 @@ COPY --from=builder /tmp/build/bin /opt/fscio/bin
 COPY --from=builder /tmp/build/contracts /contracts
 COPY --from=builder /fsc/Docker/gitlab/config.ini /
 COPY --from=builder /etc/fscio-version /etc
+COPY --from=builder /etc/ld.so.conf.d/rdkafka.conf /etc/ld.so.conf.d/
 COPY --from=builder /fsc/Docker/nodfscd.sh /opt/fscio/bin/nodfscd.sh
 ENV FSCIO_ROOT=/opt/fscio
 RUN chmod +x /opt/fscio/bin/nodfscd.sh
