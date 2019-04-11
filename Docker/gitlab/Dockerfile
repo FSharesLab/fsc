@@ -1,12 +1,12 @@
 FROM fscio/builder as builder
 ARG branch=master
 ARG symbol=SYS
-ARG gitlabAuthentication = dockerbuild:dockerbuild
+ARG gitlabAuthentication=dockerbuild:dockerbuild
 
 RUN git clone -b $branch http://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git \
     && cd fsc && echo "$branch:$(git rev-parse HEAD)" > /etc/fscio-version \
     && cmake -H. -B"/tmp/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DWASM_ROOT=/opt/wasm -DCMAKE_CXX_COMPILER=clang++ \
-       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol \
+       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol \
     && cmake --build /tmp/build --target install
 
 

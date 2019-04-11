@@ -15,17 +15,19 @@ Simple and fast setup of FSC.IO on Docker is also available.
 ## Build fsc base environment image
 
 ```bash
-git clone https://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git  --depth 1
-git checkout devlop origin/devlop
-cd fsc/Docker/dev-gitlab/builder
+git clone http://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git  --depth 1
+cd fsc/
+git checkout -b devlop origin/devlop
+cd Docker/dev-gitlab/builder
 docker build . -t fscio/builder
 ```
 ## Build fsc devlop environment image
 
 ```bash
-git clone https://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git 
-git checkout devlop origin/devlop
-cd fsc/Docker/dev-gitlab
+git clone http://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git 
+cd fsc/
+git checkout -b devlop origin/devlop
+cd Docker/gitlab
 ```
 If you would like to target a specific branch/tag, you may use a build argument. For example, if you wished to generate a docker image based off of the 1.6.1 tag, you could do the following:
 ```
