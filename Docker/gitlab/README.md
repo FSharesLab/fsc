@@ -15,7 +15,7 @@ Simple and fast setup of FSC.IO on Docker is also available.
 ## Build fsc base environment image
 
 ```bash
-git clone https://dockerbuild:dockerbuild@github.com/FutureSharesCloud/fsc.git  --depth 1
+git clone https://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git  --depth 1
 git checkout devlop origin/devlop
 cd fsc/Docker/dev-gitlab/builder
 docker build . -t fscio/builder
@@ -23,7 +23,7 @@ docker build . -t fscio/builder
 ## Build fsc devlop environment image
 
 ```bash
-git clone https://dockerbuild:dockerbuild@github.com/FutureSharesCloud/fsc.git 
+git clone https://dockerbuild:dockerbuild@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git 
 git checkout devlop origin/devlop
 cd fsc/Docker/dev-gitlab
 ```
