@@ -1,7 +1,10 @@
-FROM fscio/builder as builder
-ARG branch=master
-ARG symbol=SYS
-ARG gitlabAuthentication=dockerbuild:dockerbuild
+ARG baseEnvDeocker=fscio/builder
+
+FROM $baseEnvDeocker as builder
+
+ARG branch=devlop
+ARG symbol=FSC
+ARG gitlabAuthentication=gitlabUser:gitlabPasswd
 
 RUN git clone -b $branch http://$gitlabAuthentication@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git \
     && cd fsc && echo "$branch:$(git rev-parse HEAD)" > /etc/fscio-version \

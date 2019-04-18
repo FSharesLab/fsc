@@ -137,7 +137,7 @@ public:
       fc::variant                total_resources;
       fc::variant                self_delegated_bandwidth;
       fc::variant                refund_request;
-      fc::variant                voter_info;
+      vector<fc::variant>        voter_info;
    };
 
    struct get_account_params {
@@ -335,7 +335,7 @@ public:
 
    struct get_producers_result {
       vector<fc::variant> rows; ///< one row per item, either encoded as hex string or JSON object
-      double              total_producer_vote_weight;
+      uint64_t            total_producer_vote_weight;
       string              more; ///< fill lower_bound with this value to fetch more rows
    };
 

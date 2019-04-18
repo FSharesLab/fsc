@@ -5,7 +5,7 @@ FSC_PREFIX=${PREFIX}/${SUBPREFIX}
 mkdir -p ${PREFIX}/bin/
 #mkdir -p ${PREFIX}/lib/cmake/${PROJECT}
 mkdir -p ${FSC_PREFIX}/bin 
-mkdir -p ${FSC_PREFIX}/licenses/fscio
+#mkdir -p ${FSC_PREFIX}/licenses/fscio
 #mkdir -p ${FSC_PREFIX}/include
 #mkdir -p ${FSC_PREFIX}/lib/cmake/${PROJECT}
 #mkdir -p ${FSC_PREFIX}/cmake
@@ -15,7 +15,7 @@ mkdir -p ${FSC_PREFIX}/licenses/fscio
 cp -R ${BUILD_DIR}/bin/* ${FSC_PREFIX}/bin 
 
 # install licenses
-cp -R ${BUILD_DIR}/licenses/fscio/* ${FSC_PREFIX}/licenses
+#cp -R ${BUILD_DIR}/licenses/fscio/* ${FSC_PREFIX}/licenses
 
 # install libraries
 #cp -R ${BUILD_DIR}/lib/* ${FSC_PREFIX}/lib

@@ -20,24 +20,48 @@ Some of the groundbreaking features of FSCIO include:
 
 FSCIO is released under the open source MIT license and is offered “AS IS” without warranty of any kind, express or implied. Any security provided by the FSCIO software depends in part on how it is used, configured, and deployed. FSCIO is built upon many third-party libraries such as Binaryen (Apache License) and WAVM  (BSD 3-clause) which are also provided “AS IS” without warranty of any kind. Without limiting the generality of the foregoing, Block.one makes no representation or guarantee that FSCIO or any third-party libraries will perform as intended or will be free of errors, bugs or faulty code. Both may fail in large or small ways that could completely or partially limit functionality or compromise computer systems. If you use or implement FSCIO, you do so at your own risk. In no event will Block.one be liable to any party for any damages whatsoever, even if it had been advised of the possibility of damage.  
 
-Block.one is neither launching nor operating any initial public blockchains based upon the FSCIO software. This release refers only to version 1.0 of our open source software. We caution those who wish to use blockchains built on FSCIO to carefully vet the companies and organizations launching blockchains based on FSCIO before disclosing any private keys to their derivative software. 
+Block.one is neither launching nor operating any initial public blockchains based upon the FSCIO software. This release refers only to version 1.0 of our open source software. We caution those who wish to use blockchains built on FSCIO to carefully vet the companies and organizations launching blockchains based on FSCIO before disclosing any private keys to their derivative software.
+ 
+#### Use FSCIO by Source
 
-#### Build FSCIO 
+##### Build FSCIO
 ```sh
 $ git clone https://github.com/FutureSharesCloud/fsc.git
 $ cd fsc
 $ ./fscio_build.sh
 ```
 
-#### Install FSCIO
+##### Install FSCIO 
 ```sh
 $ ./fscio_install.sh
 ```
 
-#### Uninstall FSCIO
+##### Uninstall FSCIO
 ```sh
 $ cd fsc
 $ ./fscio_uninstall.sh
+```
+
+#### Use FSCIO by Debian Package Manager
+
+##### Build FSCIO deb Package
+```sh
+$ git clone https://github.com/FutureSharesCloud/fsc.git
+$ cd fsc
+$ ./fscio_build.sh
+$ cd build/packages/
+$ bash ./generate_package.sh [dev/beta/dawn/release]
+```
+
+##### Install FSCIO deb Package
+```sh
+$ sudo dpkg -i fscio_release_1.0.0-1_amd64.deb
+```
+
+##### Uninstall FSCIO deb Package
+```sh
+$ sudo dpkg --list |grep fscio
+$ sudo dpkg -r fscio-release
 ```
 
 ## Supported Operating Systems

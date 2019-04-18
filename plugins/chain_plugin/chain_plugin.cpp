@@ -1795,14 +1795,18 @@ read_only::get_account_results read_only::get_account( const get_account_params&
          }
       }
 
-      t_id = d.find<chain::table_id_object, chain::by_code_scope_table>(boost::make_tuple( config::system_account_name, config::system_account_name, N(voters) ));
+      t_id = d.find<chain::table_id_object, chain::by_code_scope_table>(boost::make_tuple( config::system_account_name,  params.account_name, N(votes) ));
       if (t_id != nullptr) {
-         const auto &idx = d.get_index<key_value_index, by_scope_primary>();
-         auto it = idx.find(boost::make_tuple( t_id->id, params.account_name ));
-         if ( it != idx.end() ) {
-            vector<char> data;
-            copy_inline_row(*it, data);
-            result.voter_info = abis.binary_to_variant( "voter_info", data, abi_serializer_max_time, shorten_abi_errors );
+         const auto &idx = d.get_index<key_value_index,by_scope_primary>();
+         decltype(t_id->id) next_tid(t_id->id._id + 1);
+         auto lower = idx.lower_bound(boost::make_tuple(t_id->id));
+         auto upper = idx.lower_bound(boost::make_tuple(next_tid));
+         vector<char> data;
+         
+         auto itr = lower;
+         for (; itr != upper; ++itr) {
+            copy_inline_row(*itr, data);
+            result.voter_info.emplace_back(abis.binary_to_variant( "vote_info", data, abi_serializer_max_time ));
          }
       }
    }

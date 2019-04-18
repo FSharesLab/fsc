@@ -1042,46 +1042,29 @@ struct unregister_producer_subcommand {
    }
 };
 
-struct vote_producer_proxy_subcommand {
-   string voter_str;
-   string proxy_str;
+struct vote_producer_subcommand {
+   string voter_name;
+   string producer_name;
+   string vote_num;
 
-   vote_producer_proxy_subcommand(CLI::App* actionRoot) {
-      auto vote_proxy = actionRoot->add_subcommand("proxy", localized("Vote your stake through a proxy"));
-      vote_proxy->add_option("voter", voter_str, localized("The voting account"))->required();
-      vote_proxy->add_option("proxy", proxy_str, localized("The proxy account"))->required();
-      add_standard_transaction_options(vote_proxy, "voter@active");
-
-      vote_proxy->set_callback([this] {
-         fc::variant act_payload = fc::mutable_variant_object()
-                  ("voter", voter_str)
-                  ("proxy", proxy_str)
-                  ("producers", std::vector<account_name>{});
-         auto accountPermissions = get_account_permissions(tx_permission, {voter_str,config::active_name});
-         send_actions({create_action(accountPermissions, config::system_account_name, N(voteproducer), act_payload)});
-      });
-   }
-};
-
-struct vote_producers_subcommand {
-   string voter_str;
-   vector<fscio::name> producer_names;
-
-   vote_producers_subcommand(CLI::App* actionRoot) {
-      auto vote_producers = actionRoot->add_subcommand("prods", localized("Vote for one or more producers"));
-      vote_producers->add_option("voter", voter_str, localized("The voting account"))->required();
-      vote_producers->add_option("producers", producer_names, localized("The account(s) to vote for. All options from this position and following will be treated as the producer list."))->required();
+   vote_producer_subcommand(CLI::App* actionRoot) {
+      auto vote_producers = actionRoot->add_subcommand("prod", localized("Vote for only one producer"));
+      vote_producers->add_option("voter_name", voter_name, localized("The voting account"))->required();
+      vote_producers->add_option("producer_name", producer_name, localized("The account to vote for. All options from this position and following will be treated as the producer."))->required();
+      vote_producers->add_option("vote_num", vote_num, localized("The voting number"))->required();
       add_standard_transaction_options(vote_producers, "voter@active");
 
       vote_producers->set_callback([this] {
-
-         std::sort( producer_names.begin(), producer_names.end() );
-
+         if ( vote_num.empty() ) {
+            std::cerr << "ERROR: votes with non-zero value is required" << std::endl;
+            return;
+        }
+         auto votes = to_asset(vote_num);
          fc::variant act_payload = fc::mutable_variant_object()
-                  ("voter", voter_str)
-                  ("proxy", "")
-                  ("producers", producer_names);
-         auto accountPermissions = get_account_permissions(tx_permission, {voter_str,config::active_name});
+                  ("voter_name", voter_name)
+                  ("producer_name", producer_name)
+                  ("vote_num", votes.to_string());
+         auto accountPermissions = get_account_permissions(tx_permission, {voter_name,config::active_name});
          send_actions({create_action(accountPermissions, config::system_account_name, N(voteproducer), act_payload)});
       });
    }
@@ -1132,7 +1115,6 @@ struct approve_producer_subcommand {
             }
             fc::variant act_payload = fc::mutable_variant_object()
                ("voter", voter)
-               ("proxy", "")
                ("producers", prods);
             auto accountPermissions = get_account_permissions(tx_permission, {voter,config::active_name});
             send_actions({create_action(accountPermissions, config::system_account_name, N(voteproducer), act_payload)});
@@ -1184,7 +1166,6 @@ struct unapprove_producer_subcommand {
             prods.erase( it, prods.end() ); //should always delete only one element
             fc::variant act_payload = fc::mutable_variant_object()
                ("voter", voter)
-               ("proxy", "")
                ("producers", prods);
             auto accountPermissions = get_account_permissions(tx_permission, {voter,config::active_name});
             send_actions({create_action(accountPermissions, config::system_account_name, N(voteproducer), act_payload)});
@@ -1214,16 +1195,14 @@ struct list_producers_subcommand {
             std::cout << "No producers found" << std::endl;
             return;
          }
-         auto weight = result.total_producer_vote_weight;
-         if ( !weight )
-            weight = 1;
-         printf("%-13s %-57s %-59s %s\n", "Producer", "Producer key", "Url", "Scaled votes");
+
+         printf("%-13s %-54s %-59s %s\n", "Producer", "Producer key", "Url", "Total votes");
          for ( auto& row : result.rows )
-            printf("%-13.13s %-57.57s %-59.59s %1.4f\n",
+            printf("%-13.13s %-54.54s %-59.59s %1.4f\n",
                    row["owner"].as_string().c_str(),
                    row["producer_key"].as_string().c_str(),
                    row["url"].as_string().c_str(),
-                   row["total_votes"].as_double() / weight);
+                   row["total_votes"].as_double() );
          if ( !result.more.empty() )
             std::cout << "-L " << result.more << " for more" << std::endl;
       });
@@ -1480,11 +1459,11 @@ struct sellram_subcommand {
    }
 };
 
-struct claimrewards_subcommand {
+struct claimprod_subcommand {
    string owner;
 
-   claimrewards_subcommand(CLI::App* actionRoot) {
-      auto claim_rewards = actionRoot->add_subcommand("claimrewards", localized("Claim producer rewards"));
+   claimprod_subcommand(CLI::App* actionRoot) {
+      auto claim_rewards = actionRoot->add_subcommand("claimprod", localized("Claim producer rewards"));
       claim_rewards->add_option("owner", owner, localized("The account to claim rewards for"))->required();
       add_standard_transaction_options(claim_rewards, "owner@active");
 
@@ -1492,43 +1471,27 @@ struct claimrewards_subcommand {
          fc::variant act_payload = fc::mutable_variant_object()
                   ("owner", owner);
          auto accountPermissions = get_account_permissions(tx_permission, {owner,config::active_name});
-         send_actions({create_action(accountPermissions, config::system_account_name, N(claimrewards), act_payload)});
+         send_actions({create_action(accountPermissions, config::system_account_name, N(claimprod), act_payload)});
       });
    }
 };
 
-struct regproxy_subcommand {
-   string proxy;
+struct claimvoter_subcommand {
+   string owner;
+   string producer;
 
-   regproxy_subcommand(CLI::App* actionRoot) {
-      auto register_proxy = actionRoot->add_subcommand("regproxy", localized("Register an account as a proxy (for voting)"));
-      register_proxy->add_option("proxy", proxy, localized("The proxy account to register"))->required();
-      add_standard_transaction_options(register_proxy, "proxy@active");
+   claimvoter_subcommand(CLI::App* actionRoot) {
+      auto claim_rewards = actionRoot->add_subcommand("claimvoter", localized("Claim voter rewards"));
+      claim_rewards->add_option("owner", owner, localized("The account to claim rewards for"))->required();
+      claim_rewards->add_option("producer", producer, localized("Get rewards from this voted production node"))->required();
+      add_standard_transaction_options(claim_rewards, "owner@active");
 
-      register_proxy->set_callback([this] {
+      claim_rewards->set_callback([this] {
          fc::variant act_payload = fc::mutable_variant_object()
-                  ("proxy", proxy)
-                  ("isproxy", true);
-         auto accountPermissions = get_account_permissions(tx_permission, {proxy,config::active_name});
-         send_actions({create_action(accountPermissions, config::system_account_name, N(regproxy), act_payload)});
-      });
-   }
-};
-
-struct unregproxy_subcommand {
-   string proxy;
-
-   unregproxy_subcommand(CLI::App* actionRoot) {
-      auto unregister_proxy = actionRoot->add_subcommand("unregproxy", localized("Unregister an account as a proxy (for voting)"));
-      unregister_proxy->add_option("proxy", proxy, localized("The proxy account to unregister"))->required();
-      add_standard_transaction_options(unregister_proxy, "proxy@active");
-
-      unregister_proxy->set_callback([this] {
-         fc::variant act_payload = fc::mutable_variant_object()
-                  ("proxy", proxy)
-                  ("isproxy", false);
-         auto accountPermissions = get_account_permissions(tx_permission, {proxy,config::active_name});
-         send_actions({create_action(accountPermissions, config::system_account_name, N(regproxy), act_payload)});
+                  ("owner", owner)
+                  ("producer", producer);
+         auto accountPermissions = get_account_permissions(tx_permission, {owner,config::active_name});
+         send_actions({create_action(accountPermissions, config::system_account_name, N(claimvoter), act_payload)});
       });
    }
 };
@@ -1654,10 +1617,18 @@ void get_account( const string& accountName, const string& coresym, bool json_fo
          return ss.str();
       };
 
+      std::cout << "memory: " << std::endl;
+      std::cout << indent << "quota: " << std::setw(62) << to_pretty_net(res.ram_quota) << std::endl;
+      std::cout << indent << "used:  " << std::setw(62) << to_pretty_net(res.ram_usage) << std::endl;
+      if ( -1 == res.ram_quota ) {    
+         std::cout << indent << "unused:  " << std::setw(58) << "unlimited" << std::endl;
+         std::cout << indent << "unused rate:  " << std::setw(53) << "unlimited" << std::endl;
+      } else {
+		 std::cout << indent << "unused:  " << std::setw(60) << to_pretty_net(res.ram_quota - res.ram_usage) << std::endl;
+         std::cout << indent << "unused rate:  " << std::setw(51) << (double(res.ram_quota - res.ram_usage) / double(res.ram_quota))*100 << " \%"<< std::endl;
+      }
 
-
-      std::cout << "memory: " << std::endl
-                << indent << "quota: " << std::setw(15) << to_pretty_net(res.ram_quota) << "  used: " << std::setw(15) << to_pretty_net(res.ram_usage) << std::endl << std::endl;
+      std::cout << std::endl;
 
       std::cout << "net bandwidth: " << std::endl;
       if ( res.total_resources.is_object() ) {
@@ -1794,27 +1765,23 @@ void get_account( const string& accountName, const string& coresym, bool json_fo
          std::cout << std::endl;
       }
 
-      if ( res.voter_info.is_object() ) {
-         auto& obj = res.voter_info.get_object();
-         string proxy = obj["proxy"].as_string();
-         if ( proxy.empty() ) {
-            auto& prods = obj["producers"].get_array();
-            std::cout << "producers:";
-            if ( !prods.empty() ) {
-               for ( int i = 0; i < prods.size(); ++i ) {
-                  if ( i%3 == 0 ) {
-                     std::cout << std::endl << indent;
-                  }
-                  std::cout << std::setw(16) << std::left << prods[i].as_string();
-               }
-               std::cout << std::endl;
-            } else {
-               std::cout << indent << "<not voted>" << std::endl;
-            }
-         } else {
-            std::cout << "proxy:" << indent << proxy << std::endl;
+      
+      if ( res.voter_info.size() ) {
+
+         std::cout << "Voting info:" << std::endl;
+         for(auto &voter : res.voter_info){
+             auto &obj = voter.get_object();
+             std::cout << indent << std::left << std::setw(11)
+                       << "producer:" << std::right << std::setw(30) << obj["producer_name"].as_string() << std::endl;
+             std::cout << indent << std::left << std::setw(11)    
+                       << "vote num:" << std::right << std::setw(30) << asset::from_string( obj["vote_num"].as_string() ) << std::endl;
+
+             std::cout << indent << std::left << std::setw(11)    
+                       << "voteage update time:" << std::right << std::setw(30) << obj["voteage_update_time"].as_string() << std::endl << std::endl;
+
          }
       }
+      
       std::cout << std::endl;
    } else {
       std::cout << fc::json::to_pretty_string(json) << std::endl;
@@ -3380,8 +3347,7 @@ int main( int argc, char** argv ) {
 
    auto voteProducer = system->add_subcommand("voteproducer", localized("Vote for a producer"));
    voteProducer->require_subcommand();
-   auto voteProxy = vote_producer_proxy_subcommand(voteProducer);
-   auto voteProducers = vote_producers_subcommand(voteProducer);
+   auto voteOneProducer = vote_producer_subcommand(voteProducer);
    auto approveProducer = approve_producer_subcommand(voteProducer);
    auto unapproveProducer = unapprove_producer_subcommand(voteProducer);
 
@@ -3396,10 +3362,8 @@ int main( int argc, char** argv ) {
    auto biyram = buyram_subcommand(system);
    auto sellram = sellram_subcommand(system);
 
-   auto claimRewards = claimrewards_subcommand(system);
-
-   auto regProxy = regproxy_subcommand(system);
-   auto unregProxy = unregproxy_subcommand(system);
+   auto claimprod = claimprod_subcommand(system);
+   auto claimvoter = claimvoter_subcommand(system);
 
    auto cancelDelay = canceldelay_subcommand(system);
 

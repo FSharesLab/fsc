@@ -56,3 +56,14 @@ RUN git clone --depth 1 -b releases/v3.3 https://github.com/mongodb/mongo-cxx-dr
     && make -j$(nproc) \
     && make install \
     && cd ../../ && rm -rf mongo-cxx-driver
+
+RUN git clone --depth 1 --single-branch --branch v1.0.0 https://github.com/edenhill/librdkafka \
+    && cd librdkafka \
+    && ./configure \
+    && make  \
+    && make install \
+    && touch /etc/ld.so.conf.d/rdkafka.conf \
+    && echo "# libc default configuration" >> /etc/ld.so.conf.d/rdkafka.conf \
+    && echo "/usr/local/lib" >> /etc/ld.so.conf.d/rdkafka.conf \
+    && ldconfig \
+    && cd ../ && rm -rf librdkafka
