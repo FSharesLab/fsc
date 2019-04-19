@@ -1184,27 +1184,44 @@ struct list_producers_subcommand {
       list_producers->add_option("-l,--limit", limit, localized("The maximum number of rows to return"));
       list_producers->add_option("-L,--lower", lower, localized("lower bound value of key, defaults to first"));
       list_producers->set_callback([this] {
-         auto rawResult = call(get_producers_func, fc::mutable_variant_object
-            ("json", true)("lower_bound", lower)("limit", limit));
-         if ( print_json ) {
-            std::cout << fc::json::to_pretty_string(rawResult) << std::endl;
+         
+         // get systoken precision
+         auto sysTokenRawResult = call(get_currency_stats_func, fc::mutable_variant_object("json", false)
+           ("code", "fscio.token")
+           ("symbol", "FSC")
+         );
+
+         auto sysTokenResult = sysTokenRawResult.as<fscio::chain_apis::read_only::get_currency_stats_result>();
+
+         if ( false == sysTokenResult.max_supply.is_valid() ) {
+            std::cout << "The system token hasn't been issued yet" << std::endl;
             return;
          }
-         auto result = rawResult.as<fscio::chain_apis::read_only::get_producers_result>();
-         if ( result.rows.empty() ) {
+         
+         uint64_t precision = sysTokenResult.max_supply.get_symbol().precision();
+
+         // get producers
+         auto producersRawResult = call(get_producers_func, fc::mutable_variant_object
+            ("json", true)("lower_bound", lower)("limit", limit));
+         if ( print_json ) {
+            std::cout << fc::json::to_pretty_string(producersRawResult) << std::endl;
+            return;
+         }
+         auto producersResult = producersRawResult.as<fscio::chain_apis::read_only::get_producers_result>();
+         if ( producersResult.rows.empty() ) {
             std::cout << "No producers found" << std::endl;
             return;
          }
 
-         printf("%-13s %-54s %-59s %s\n", "Producer", "Producer key", "Url", "Total votes");
-         for ( auto& row : result.rows )
-            printf("%-13.13s %-54.54s %-59.59s %1.4f\n",
+         printf("%-13s %-54s %-30s %s\n", "Producer", "Producer key", "Url", "Total votes");
+         for ( auto& row : producersResult.rows )
+            printf("%-13.13s %-54.54s %-30.30s %lu\n",
                    row["owner"].as_string().c_str(),
                    row["producer_key"].as_string().c_str(),
                    row["url"].as_string().c_str(),
-                   row["total_votes"].as_double() );
-         if ( !result.more.empty() )
-            std::cout << "-L " << result.more << " for more" << std::endl;
+                   row["total_votes"].as_uint64() / precision );
+         if ( !producersResult.more.empty() )
+            std::cout << "-L " << producersResult.more << " for more" << std::endl;
       });
    }
 };
@@ -1755,30 +1772,25 @@ void get_account( const string& accountName, const string& coresym, bool json_fo
 
       if( res.core_liquid_balance.valid() ) {
          std::cout << res.core_liquid_balance->get_symbol().name() << " balances: " << std::endl;
-         std::cout << indent << std::left << std::setw(11)
+         std::cout << indent << std::left << std::setw(13)
                    << "liquid:" << std::right << std::setw(18) << *res.core_liquid_balance << std::endl;
          std::cout << indent << std::left << std::setw(11)
                    << "staked:" << std::right << std::setw(18) << staked << std::endl;
-         std::cout << indent << std::left << std::setw(11)
+         std::cout << indent << std::left << std::setw(13)
                    << "unstaking:" << std::right << std::setw(18) << unstaking << std::endl;
          std::cout << indent << std::left << std::setw(11) << "total:" << std::right << std::setw(18) << (*res.core_liquid_balance + staked + unstaking) << std::endl;
          std::cout << std::endl;
       }
 
-      
       if ( res.voter_info.size() ) {
-
-         std::cout << "Voting info:" << std::endl;
+         std::cout << "votes info:" << std::endl;
+         printf("     %-20s %-30s %-30s\n", "Producer", "Vote Num", "Voteage Update Time");
          for(auto &voter : res.voter_info){
              auto &obj = voter.get_object();
-             std::cout << indent << std::left << std::setw(11)
-                       << "producer:" << std::right << std::setw(30) << obj["producer_name"].as_string() << std::endl;
-             std::cout << indent << std::left << std::setw(11)    
-                       << "vote num:" << std::right << std::setw(30) << asset::from_string( obj["vote_num"].as_string() ) << std::endl;
-
-             std::cout << indent << std::left << std::setw(11)    
-                       << "voteage update time:" << std::right << std::setw(30) << obj["voteage_update_time"].as_string() << std::endl << std::endl;
-
+             printf("     %-20.20s %-30.30s %-30.30s\n",
+                   obj["producer_name"].as_string().c_str(),
+                   obj["vote_num"].as_string().c_str(),
+                   obj["voteage_update_time"].as_string().c_str() );
          }
       }
       

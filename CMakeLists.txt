@@ -35,7 +35,7 @@ set( CXX_STANDARD_REQUIRED ON)
 
 set(VERSION_MAJOR 1)
 set(VERSION_MINOR 0)
-set(VERSION_PATCH 0)
+set(VERSION_PATCH 1)
 
 if(VERSION_SUFFIX)
     set(VERSION_FULL "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}-${VERSION_SUFFIX}")
@@ -210,7 +210,7 @@ include(utils)
 add_subdirectory( externals )
 
 if ("${CORE_SYMBOL_NAME}" STREQUAL "")
-  set( CORE_SYMBOL_NAME "SYS" )
+  set( CORE_SYMBOL_NAME "FSC" )
 endif()
 string(TOUPPER ${CORE_SYMBOL_NAME} CORE_SYMBOL_NAME)
 
@@ -220,6 +220,12 @@ if (CORE_SYMBOL_NAME_LENGTH GREATER 7)
 endif()
 
 message( STATUS "Using '${CORE_SYMBOL_NAME}' as CORE symbol name" )
+
+if ("${CORE_SYMBOL_PRECISION}" STREQUAL "")
+  set( CORE_SYMBOL_PRECISION 8 )
+endif()
+
+message( STATUS "Using '${CORE_SYMBOL_PRECISION}' as CORE symbol precision" )
 
 if ("${FSCIO_ROOT_KEY}" STREQUAL "")
    set(FSCIO_ROOT_KEY "FSC6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV")

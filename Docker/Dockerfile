@@ -4,11 +4,12 @@ FROM $baseEnvDeocker as builder
 
 ARG branch=master
 ARG symbol=FSC
+ARG precision=8
 
 RUN git clone -b $branch https://github.com/FutureSharesCloud/fsc.git --recursive \
     && cd fsc && echo "$branch:$(git rev-parse HEAD)" > /etc/fscio-version \
     && cmake -H. -B"/tmp/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DWASM_ROOT=/opt/wasm -DCMAKE_CXX_COMPILER=clang++ \
-       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol \
+       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol -DCORE_SYMBOL_PRECISION=$precision \
     && cmake --build /tmp/build --target install
 
 

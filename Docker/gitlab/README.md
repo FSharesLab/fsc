@@ -35,7 +35,7 @@ cd Docker/gitlab
 If you would like to target a specific branch/tag, you may use a build argument. For example, if you wished to generate a docker image based off of the 1.0.0 tag, you could do the following(Note that the Angle brackets are replaced with private information):
 
 ```
-docker build -t fscio/fsc:dev-1.0.0 . --build-arg baseEnvDeocker=fscio/builder:<baseEnvDockerVersion> --build-arg branch=devlop  --build-arg symbol=FSC  --build-arg  gitlabAuthentication=<username:passwd> 
+docker build -t fscio/fsc:<fsc tag version> . --build-arg baseEnvDeocker=fscio/builder:<baseEnvDockerVersion> --build-arg branch=<tag branch>  --build-arg symbol=<core symbol name> --build-arg precision=<core symbol precision> --build-arg  gitlabAuthentication=<username:passwd> 
 ```
 
 ## Start nodfsc docker container only

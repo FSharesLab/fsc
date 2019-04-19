@@ -554,6 +554,13 @@
 			rm -rf "${TEMP_DIR}/librdkafka"
 			exit 1
 		fi
+		
+	    if ! cd "${TEMP_DIR}"
+		then
+			printf "\\tUnable to enter directory %s.\\n" "${TEMP_DIR}"
+			printf "\\tExiting now.\\n\\n"
+			exit 1;
+		fi
 
 		if ! rm -rf "${TEMP_DIR}/librdkafka"
 		then

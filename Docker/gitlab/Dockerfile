@@ -4,12 +4,13 @@ FROM $baseEnvDeocker as builder
 
 ARG branch=devlop
 ARG symbol=FSC
+ARG precision=8
 ARG gitlabAuthentication=gitlabUser:gitlabPasswd
 
 RUN git clone -b $branch http://$gitlabAuthentication@gitlab.valicn.com/cpp/futureshareschian/fscio/fsc.git \
     && cd fsc && echo "$branch:$(git rev-parse HEAD)" > /etc/fscio-version \
     && cmake -H. -B"/tmp/build" -GNinja -DCMAKE_BUILD_TYPE=Release -DWASM_ROOT=/opt/wasm -DCMAKE_CXX_COMPILER=clang++ \
-       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol \
+       -DCMAKE_C_COMPILER=clang -DCMAKE_INSTALL_PREFIX=/tmp/build -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true -DCORE_SYMBOL_NAME=$symbol -DCORE_SYMBOL_PRECISION=$precision\
     && cmake --build /tmp/build --target install
 
 
@@ -18,7 +19,6 @@ FROM ubuntu:18.04
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y install openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local/lib/* /usr/local/lib/
 COPY --from=builder /tmp/build/bin /opt/fscio/bin
-COPY --from=builder /tmp/build/contracts /contracts
 COPY --from=builder /fsc/Docker/gitlab/config.ini /
 COPY --from=builder /etc/fscio-version /etc
 COPY --from=builder /etc/ld.so.conf.d/rdkafka.conf /etc/ld.so.conf.d/

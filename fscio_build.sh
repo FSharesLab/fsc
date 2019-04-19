@@ -34,7 +34,7 @@
 
    function usage()
    {
-      printf "\\tUsage: %s \\n\\t[Build Option -o <Debug|Release|RelWithDebInfo|MinSizeRel>] \\n\\t[CodeCoverage -c] \\n\\t[Doxygen -d] \\n\\t[CoreSymbolName -s <1-7 characters>] \\n\\t[Avoid Compiling -a]\\n\\n" "$0" 1>&2
+      printf "\\tUsage: %s \\n\\t[Build Option -o <Debug|Release|RelWithDebInfo|MinSizeRel>] \\n\\t[CodeCoverage -c] \\n\\t[Doxygen -d] \\n\\t[CoreSymbolName -s <1-7 characters>] \\n\\t[CoreSymbolPrecision -p <1-256>] \\n\\t[Avoid Compiling -a]\\n\\n" "$0" 1>&2
       exit 1
    }
 
@@ -48,7 +48,8 @@
    DISK_MIN=20
    DOXYGEN=false
    ENABLE_COVERAGE_TESTING=false
-   CORE_SYMBOL_NAME="SYS"
+   CORE_SYMBOL_NAME="FSC"
+   CORE_SYMBOL_PRECISION=8
    # Use current directory's tmp directory if noexec is enabled for /tmp
    if (mount | grep "/tmp " | grep --quiet noexec); then
         mkdir -p $SOURCE_DIR/tmp
@@ -66,7 +67,7 @@
    txtrst=$(tput sgr0)
 
    if [ $# -ne 0 ]; then
-      while getopts ":cdo:s:ah" opt; do
+      while getopts ":cdo:sp:ah" opt; do
          case "${opt}" in
             o )
                options=( "Debug" "Release" "RelWithDebInfo" "MinSizeRel" )
@@ -91,6 +92,15 @@
                   exit 1
                else
                   CORE_SYMBOL_NAME="${OPTARG}"
+               fi
+            ;;
+            p)
+               if [ "${#OPTARG}" -gt 3 ] || [ -z "${#OPTARG}" ]; then
+                  printf "\\n\\tInvalid argument: %s\\n" "${OPTARG}" 1>&2
+                  usage
+                  exit 1
+               else
+                  CORE_SYMBOL_PRECISION="${OPTARG}"
                fi
             ;;
             a)
@@ -262,7 +272,7 @@
    fi
 
    if ! "${CMAKE}" -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" -DCMAKE_CXX_COMPILER="${CXX_COMPILER}" \
-      -DCMAKE_C_COMPILER="${C_COMPILER}" -DWASM_ROOT="${WASM_ROOT}" -DCORE_SYMBOL_NAME="${CORE_SYMBOL_NAME}" \
+      -DCMAKE_C_COMPILER="${C_COMPILER}" -DWASM_ROOT="${WASM_ROOT}" -DCORE_SYMBOL_NAME="${CORE_SYMBOL_NAME}" -DCORE_SYMBOL_PRECISION="${CORE_SYMBOL_PRECISION}" \
       -DOPENSSL_ROOT_DIR="${OPENSSL_ROOT_DIR}" -DBUILD_MONGO_DB_PLUGIN=true -DBUILD_KAFKA_PLUGIN=true \
       -DENABLE_COVERAGE_TESTING="${ENABLE_COVERAGE_TESTING}" -DBUILD_DOXYGEN="${DOXYGEN}" \
       -DCMAKE_INSTALL_PREFIX="/usr/local/fscio" ${LOCAL_CMAKE_FLAGS} "${SOURCE_DIR}"
