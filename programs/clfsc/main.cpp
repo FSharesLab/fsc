@@ -1213,13 +1213,17 @@ struct list_producers_subcommand {
             return;
          }
 
-         printf("%-13s %-54s %-30s %s\n", "Producer", "Producer key", "Url", "Total votes");
+         auto weight = producersResult.total_producer_vote_weight;
+         if ( !weight )
+            weight = 1;
+         
+         printf("%-13s %-54s %-30s %s\n", "Producer", "Producer key", "Url", "Scaled votes");
          for ( auto& row : producersResult.rows )
             printf("%-13.13s %-54.54s %-30.30s %lu\n",
                    row["owner"].as_string().c_str(),
                    row["producer_key"].as_string().c_str(),
                    row["url"].as_string().c_str(),
-                   row["total_votes"].as_uint64() / precision );
+                   row["total_votes"].as_double() / weight );
          if ( !producersResult.more.empty() )
             std::cout << "-L " << producersResult.more << " for more" << std::endl;
       });
