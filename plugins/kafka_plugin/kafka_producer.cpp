@@ -12,7 +12,7 @@
  */
 namespace fscio {
 
-    int kafka_producer::trx_kafka_create_topic(char *brokers, char *topic,rd_kafka_t** rk,rd_kafka_topic_t** rkt,rd_kafka_conf_t** conf){
+    int kafka_producer::kafka_create_topic(char *brokers, char *topic,rd_kafka_t** rk,rd_kafka_topic_t** rkt,rd_kafka_conf_t** conf){
         char errstr[512];
         if (brokers == NULL || topic == NULL) {
             return KAFKA_STATUS_INIT_FAIL;
@@ -47,46 +47,53 @@ namespace fscio {
 
     }
 
-    int kafka_producer::trx_kafka_init(char *brokers, char *acceptopic, char *appliedtopic,char *transfertopic) {
+    int kafka_producer::kafka_init(char *brokers, char *trx_acceptopic, char *trx_appliedtopic,char *trx_transfertopic, char *block_accepttopic) {
 
         if (brokers == NULL) {
             return KAFKA_STATUS_INIT_FAIL;
         }
 
-        if (acceptopic != NULL) {
-            if(KAFKA_STATUS_OK!=trx_kafka_create_topic(brokers,acceptopic,&accept_rk,&accept_rkt,&accept_conf)){
+        if (trx_acceptopic != NULL) {
+            if(KAFKA_STATUS_OK!=kafka_create_topic(brokers,trx_acceptopic,&trx_accept_rk,&trx_accept_rkt,&trx_accept_conf)){
                 return KAFKA_STATUS_INIT_FAIL;
             }
         }
 
-        if (appliedtopic != NULL) {
-            if(KAFKA_STATUS_OK!=trx_kafka_create_topic(brokers,appliedtopic,&applied_rk,&applied_rkt,&applied_conf)){
+        if (trx_appliedtopic != NULL) {
+            if(KAFKA_STATUS_OK!=kafka_create_topic(brokers,trx_appliedtopic,&trx_applied_rk,&trx_applied_rkt,&trx_applied_conf)){
                 return KAFKA_STATUS_INIT_FAIL;
             }
         }
 
-        if (transfertopic != NULL) {
-            if(KAFKA_STATUS_OK!=trx_kafka_create_topic(brokers,transfertopic,&transfer_rk,&transfer_rkt,&transfer_conf)){
+        if (trx_transfertopic != NULL) {
+            if(KAFKA_STATUS_OK!=kafka_create_topic(brokers,trx_transfertopic,&trx_transfer_rk,&trx_transfer_rkt,&trx_transfer_conf)){
                 return KAFKA_STATUS_INIT_FAIL;
             }
         }
-
+        if (block_accepttopic != NULL) {
+            if(KAFKA_STATUS_OK!=kafka_create_topic(brokers,block_accepttopic,&block_accept_rk,&block_accept_rkt,&block_accept_conf)){
+                return KAFKA_STATUS_INIT_FAIL;
+            }
+        }
         return KAFKA_STATUS_OK;
     }
 
-    int kafka_producer::trx_kafka_sendmsg(int trxtype, char *msgstr) {
+    int kafka_producer::kafka_sendmsg(int trxtype, char *msgstr) {
         rd_kafka_t *rk;
         rd_kafka_topic_t *rkt;
-        if (trxtype == KAFKA_TRX_ACCEPT && accept_rk!=NULL && accept_rkt!=NULL) {
-            rk = accept_rk;
-            rkt = accept_rkt;
-        } else if (trxtype == KAFKA_TRX_APPLIED && applied_rk!=NULL && applied_rkt!=NULL) {
-            rk = applied_rk;
-            rkt = applied_rkt;
-        } else if(trxtype == KAFKA_TRX_TRANSFER && transfer_rk!=NULL && transfer_rkt!=NULL){
-            rk = transfer_rk;
-            rkt = transfer_rkt;
-        } else {
+        if (trxtype == KAFKA_TRX_ACCEPT && trx_accept_rk!=NULL && trx_accept_rkt!=NULL) {
+            rk = trx_accept_rk;
+            rkt = trx_accept_rkt;
+        } else if (trxtype == KAFKA_TRX_APPLIED && trx_applied_rk!=NULL && trx_applied_rkt!=NULL) {
+            rk = trx_applied_rk;
+            rkt = trx_applied_rkt;
+        } else if(trxtype == KAFKA_TRX_TRANSFER && trx_transfer_rk!=NULL && trx_transfer_rkt!=NULL){
+            rk = trx_transfer_rk;
+            rkt = trx_transfer_rkt;
+        } else if(trxtype == KAFKA_BLOCK_ACCEPT && block_accept_rk!=NULL && block_accept_rkt!=NULL){
+            rk = block_accept_rk;
+            rkt = block_accept_rkt;
+        }  else {
             return KAFKA_STATUS_MSG_INVALID;
         }
 
@@ -121,50 +128,60 @@ namespace fscio {
 
     }
 
-    rd_kafka_topic_t* kafka_producer::trx_kafka_get_topic(int trxtype){
+    rd_kafka_topic_t* kafka_producer::kafka_get_topic(int trxtype){
 
         if(trxtype == KAFKA_TRX_ACCEPT){
-            return accept_rkt;
+            return trx_accept_rkt;
         }else if(trxtype == KAFKA_TRX_APPLIED){
-            return applied_rkt;
+            return trx_applied_rkt;
         }else if(trxtype == KAFKA_TRX_TRANSFER){
-            return transfer_rkt;
+            return trx_transfer_rkt;
+        }else if(trxtype == KAFKA_BLOCK_ACCEPT){
+            return block_accept_rkt;
         }else{
             return NULL;
         }
 
     }
 
-    int kafka_producer::trx_kafka_destroy(void) {
-        fprintf(stderr, "=== trx_kafka_destroyFlushing final message.. \n");
-        if (accept_rk != NULL) {
-            rd_kafka_flush(accept_rk, 10 * 1000);
+    int kafka_producer::kafka_destroy(void) {
+        fprintf(stderr, "=== kafka_destroyFlushing final message.. \n");
+        if (trx_accept_rk != NULL) {
+            rd_kafka_flush(trx_accept_rk, 10 * 1000);
             /* Destroy topic object */
-            rd_kafka_topic_destroy(accept_rkt);
+            rd_kafka_topic_destroy(trx_accept_rkt);
             /* Destroy the producer instance */
-            rd_kafka_destroy(accept_rk);
-            accept_rk = NULL;
-            accept_rkt = NULL;
+            rd_kafka_destroy(trx_accept_rk);
+            trx_accept_rk = NULL;
+            trx_accept_rkt = NULL;
         }
-        if (applied_rk != NULL) {
-            rd_kafka_flush(applied_rk, 10 * 1000);
+        if (trx_applied_rk != NULL) {
+            rd_kafka_flush(trx_applied_rk, 10 * 1000);
             /* Destroy topic object */
-            rd_kafka_topic_destroy(applied_rkt);
+            rd_kafka_topic_destroy(trx_applied_rkt);
             /* Destroy the producer instance */
-            rd_kafka_destroy(applied_rk);
-            applied_rk = NULL;
-            applied_rkt = NULL;
+            rd_kafka_destroy(trx_applied_rk);
+            trx_applied_rk = NULL;
+            trx_applied_rkt = NULL;
         }
-        if (transfer_rk != NULL) {
-            rd_kafka_flush(transfer_rk, 10 * 1000);
+        if (trx_transfer_rk != NULL) {
+            rd_kafka_flush(trx_transfer_rk, 10 * 1000);
             /* Destroy topic object */
-            rd_kafka_topic_destroy(transfer_rkt);
+            rd_kafka_topic_destroy(trx_transfer_rkt);
             /* Destroy the producer instance */
-            rd_kafka_destroy(transfer_rk);
-            transfer_rk = NULL;
-            transfer_rkt = NULL;
+            rd_kafka_destroy(trx_transfer_rk);
+            trx_transfer_rk = NULL;
+            trx_transfer_rkt = NULL;
         }
-
+        if (block_accept_rk != NULL) {
+            rd_kafka_flush(block_accept_rk, 10 * 1000);
+            /* Destroy topic object */
+            rd_kafka_topic_destroy(block_accept_rkt);
+            /* Destroy the producer instance */
+            rd_kafka_destroy(block_accept_rk);
+            block_accept_rk = NULL;
+            block_accept_rkt = NULL;
+        }
         return KAFKA_STATUS_OK;
     }
 }

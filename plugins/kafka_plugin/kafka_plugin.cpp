@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <fscio/kafka_plugin/kafka_producer.hpp>
 #include <fscio/kafka_plugin/kafka_plugin.hpp>
+#include <fscio/kafka_plugin/kafka_types.hpp>
 
 #include <fscio/chain/fscio_contract.hpp>
 #include <fscio/chain/config.hpp>
@@ -39,6 +40,7 @@ namespace fscio {
     using chain::transaction_id_type;
     using chain::packed_transaction;
     using chain::permission_level;
+    using fscio::kafka_block_accept_st;
 
 static appbase::abstract_plugin& _kafka_plugin = app().register_plugin<kafka_plugin>();
 using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
@@ -68,8 +70,6 @@ using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
             vector<action_info> action_vec;
 
         };
-
-
 
         void consume_blocks();
 
@@ -388,51 +388,76 @@ using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
 
     void kafka_plugin_impl::_process_accepted_transaction(const chain::transaction_metadata_ptr &t) {
 
-   const auto& trx = t->packed_trx;
-   string trx_json = fc::json::to_string( trx );
-   //elog("trx_json: ${e}",("e",trx_json));
-   producer->trx_kafka_sendmsg(KAFKA_TRX_ACCEPT,(char*)trx_json.c_str());
+        const signed_transaction& trx = t->packed_trx->get_signed_transaction();
+
+        string trx_json = fc::json::to_string( trx );
+        //ilog("trx_json: ${e}",("e",trx_json));
+        producer->kafka_sendmsg(KAFKA_TRX_ACCEPT,(char*)trx_json.c_str());
 
     }
 
     void kafka_plugin_impl::_process_applied_transaction(const trasaction_info_st &t) {
 
-    uint64_t time = (t.block_time.time_since_epoch().count()/1000);
+       uint64_t time = (t.block_time.time_since_epoch().count()/1000);
 
-    string transaction_metadata_json =
-            "{\"block_number\":" + std::to_string(t.block_number) + ",\"block_time\":" + std::to_string(time) +
-            ",\"trace\":" + fc::json::to_string(t.trace).c_str() +"}";
-    producer->trx_kafka_sendmsg(KAFKA_TRX_APPLIED,(char*)transaction_metadata_json.c_str());
-    //elog("transaction_metadata_json = ${e}",("e",transaction_metadata_json));
+       string transaction_metadata_json =
+               "{\"block_number\":" + std::to_string(t.block_number) + ",\"block_time\":" + std::to_string(time) +
+               ",\"trace\":" + fc::json::to_string(t.trace).c_str() +"}";
+       producer->kafka_sendmsg(KAFKA_TRX_APPLIED,(char*)transaction_metadata_json.c_str());
+       //elog("transaction_metadata_json = ${e}",("e",transaction_metadata_json));
 
-    if(producer->trx_kafka_get_topic(KAFKA_TRX_TRANSFER) != NULL){
-        filter_traction_trace(t.trace,N(transfer));
-        if(t.trace->action_traces.size() > 0){
-            string transfer_json =
-                    "{\"block_number\":" + std::to_string(t.block_number) + ",\"block_time\":" + std::to_string(time) +
-                    ",\"trace\":" + fc::json::to_string(t.trace).c_str() +"}";
-            producer->trx_kafka_sendmsg(KAFKA_TRX_TRANSFER,(char*)transfer_json.c_str());
-            //elog("transfer_json = ${e}",("e",transfer_json));
+       if(producer->kafka_get_topic(KAFKA_TRX_TRANSFER) != NULL){
+           filter_traction_trace(t.trace,N(transfer));
+           if(t.trace->action_traces.size() > 0){
+               string transfer_json =
+                       "{\"block_number\":" + std::to_string(t.block_number) + ",\"block_time\":" + std::to_string(time) +
+                       ",\"trace\":" + fc::json::to_string(t.trace).c_str() +"}";
+               producer->kafka_sendmsg(KAFKA_TRX_TRANSFER,(char*)transfer_json.c_str());
+               //elog("transfer_json = ${e}",("e",transfer_json));
+           }
+       }
+   }
+
+    void kafka_plugin_impl::_process_accepted_block( const chain::block_state_ptr& bs ) {
+        const auto& header = bs->header;
+
+        kafka_block_accept_st block_accept;
+
+        block_accept.current_block_num = bs->block_num;
+        block_accept.current_block_id = bs->id;
+        block_accept.current_block_header = header;
+
+        auto &chain = chain_plug->chain();
+        block_accept.irreversible_block_num = chain.last_irreversible_block_num();
+        block_accept.irreversible_block_id = chain.last_irreversible_block_id();
+
+
+        auto block_json = fc::json::to_string( block_accept );
+        //ilog("json: ${e}",("e",block_json));
+        producer->kafka_sendmsg(KAFKA_BLOCK_ACCEPT,(char*)block_json.c_str());
+
+    }
+
+    void kafka_plugin_impl::_process_irreversible_block(const chain::block_state_ptr& bs)
+    {
+
+    }
+
+    void kafka_plugin_impl::_process_trace(vector<chain::action_trace>::iterator  action_trace_ptr,action_name act_name){
+
+        auto inline_trace_ptr = action_trace_ptr->inline_traces.begin();
+        for(;inline_trace_ptr!=action_trace_ptr->inline_traces.end();inline_trace_ptr++){
+            //elog("inline action:");
+            _process_trace(inline_trace_ptr,act_name);
         }
-    }
 
-}
-
-void kafka_plugin_impl::_process_trace(vector<chain::action_trace>::iterator  action_trace_ptr,action_name act_name){
-
-    auto inline_trace_ptr = action_trace_ptr->inline_traces.begin();
-    for(;inline_trace_ptr!=action_trace_ptr->inline_traces.end();inline_trace_ptr++){
-        //elog("inline action:");
-        _process_trace(inline_trace_ptr,act_name);
-    }
-
-    if(action_trace_ptr->act.name == act_name){
+        if(action_trace_ptr->act.name == act_name){
 
         //elog("act_name=${e}",("e",act_name));
         chain_apis::read_only::abi_bin_to_json_params params = {
-                .code = action_trace_ptr->act.account,
-                .action = action_trace_ptr->act.name,
-                .binargs = action_trace_ptr->act.data
+            .code = action_trace_ptr->act.account,
+            .action = action_trace_ptr->act.name,
+            .binargs = action_trace_ptr->act.data
         };
 
         auto readonly = chain_plug->get_read_only_api();
@@ -440,41 +465,32 @@ void kafka_plugin_impl::_process_trace(vector<chain::action_trace>::iterator  ac
 
         string data_str = fc::json::to_string(Result.args);
         action_info action_info1 = {
-                .account = action_trace_ptr->act.account,
-                .name = action_trace_ptr->act.name,
-                .authorization = action_trace_ptr->act.authorization,
-                .data_json = data_str
+            .account = action_trace_ptr->act.account,
+            .name = action_trace_ptr->act.name,
+            .authorization = action_trace_ptr->act.authorization,
+            .data_json = data_str
         };
 
         action_trace_ptr->act.data.resize(data_str.size());
         action_trace_ptr->act.data.assign(data_str.begin(),data_str.end());
         //elog("act.data=${e}",("e",action_trace_ptr->act.data));
-    }
-}
-
-void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr trace,action_name act_name){
-
-
-    vector<chain::action_trace>::iterator action_trace_ptr = trace->action_traces.begin();
-
-    for(;action_trace_ptr != trace->action_traces.end();){
-        if(action_trace_ptr->act.name == act_name){
-            _process_trace(action_trace_ptr,act_name);
-            action_trace_ptr++;
-            continue;
-        }else{
-            trace->action_traces.erase(action_trace_ptr);
         }
     }
-}
+
+    void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr trace,action_name act_name){
 
 
-    void kafka_plugin_impl::_process_accepted_block( const chain::block_state_ptr& bs )
-    {
-    }
+        vector<chain::action_trace>::iterator action_trace_ptr = trace->action_traces.begin();
 
-    void kafka_plugin_impl::_process_irreversible_block(const chain::block_state_ptr& bs)
-    {
+        for(;action_trace_ptr != trace->action_traces.end();){
+            if(action_trace_ptr->act.name == act_name){
+                _process_trace(action_trace_ptr,act_name);
+                action_trace_ptr++;
+                continue;
+            }else{
+                trace->action_traces.erase(action_trace_ptr);
+            }
+        }
     }
 
     kafka_plugin_impl::kafka_plugin_impl()
@@ -490,7 +506,7 @@ void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr
              condition.notify_one();
 
              consume_thread.join();
-             producer->trx_kafka_destroy();
+             producer->kafka_destroy();
           } catch( std::exception& e ) {
              elog( "Exception on kafka_plugin shutdown of consume thread: ${e}", ("e", e.what()));
           }
@@ -517,12 +533,14 @@ void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr
 
     void kafka_plugin::set_program_options(options_description &cli, options_description &cfg) {
         cfg.add_options()
-                ("accept_trx_topic", bpo::value<std::string>(),
+                ("kafka-trx_accept_topic", bpo::value<std::string>()->default_value("fscio.trx-accept"),
                  "The topic for accepted transaction.")
-                ("applied_trx_topic", bpo::value<std::string>(),
+                ("kafka-trx_applied_topic", bpo::value<std::string>()->default_value("fscio.trx-applied"),
                  "The topic for appiled transaction.")
-                ("transfer_trx_topic", bpo::value<std::string>(),
+                ("kafka-trx_transfer_topic", bpo::value<std::string>()->default_value("fscio.trx-transfer"),
                  "The topic for transfer transaction.")
+                ("kafka-block_accepted_topic", bpo::value<std::string>()->default_value("fscio.block-accept"),
+                 "The topic for accepted block.")
                 ("kafka-uri,k", bpo::value<std::string>(),
                  "the kafka brokers uri, as 192.168.31.225:9092")
                 ("kafka-queue-size", bpo::value<uint32_t>()->default_value(256),
@@ -536,35 +554,40 @@ void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr
         char *accept_trx_topic = NULL;
         char *applied_trx_topic = NULL;
         char *transfer_trx_topic = NULL;
+        char *accept_block_topic = NULL;
         char *brokers_str = NULL;
 
         try {
             if (options.count("kafka-uri")) {
+                ilog("initializing kafka_plugin");
                 brokers_str = (char *) (options.at("kafka-uri").as<std::string>().c_str());
                 ilog("brokers_str:${j}", ("j", brokers_str));
-                if (options.count("accept_trx_topic") != 0) {
-                    accept_trx_topic = (char *) (options.at("accept_trx_topic").as<std::string>().c_str());
-                    ilog("accept_trx_topic:${j}", ("j", accept_trx_topic));
+                if (options.count("kafka-trx_accept_topic") != 0) {
+                    accept_trx_topic = (char *) (options.at("kafka-trx_accept_topic").as<std::string>().c_str());
                 }
-                if (options.count("applied_trx_topic") != 0) {
-                    applied_trx_topic = (char *) (options.at("applied_trx_topic").as<std::string>().c_str());
-                    ilog("applied_trx_topic:${j}", ("j", applied_trx_topic));
+                ilog("kafka-trx_accept_topic:${j}", ("j", accept_trx_topic));
+                if (options.count("kafka-trx_applied_topic") != 0) {
+                    applied_trx_topic = (char *) (options.at("kafka-trx_applied_topic").as<std::string>().c_str());
                 }
-                if (options.count("transfer_trx_topic") != 0) {
-                    transfer_trx_topic = (char *) (options.at("transfer_trx_topic").as<std::string>().c_str());
-                    ilog("transfer_trx_topic:${j}", ("j", transfer_trx_topic));
+                ilog("kafka-trx_applied_topic:${j}", ("j", applied_trx_topic));
+                if (options.count("kafka-trx_transfer_topic") != 0) {
+                    transfer_trx_topic = (char *) (options.at("kafka-trx_transfer_topic").as<std::string>().c_str());
                 }
-                  
-          if(0!=my->producer->trx_kafka_init(brokers_str,accept_trx_topic,applied_trx_topic,transfer_trx_topic)){
-            elog("trx_kafka_init fail");
-          }else{
-            ilog("trx_kafka_init ok");
-          }
-   	  }
+                ilog("kafka-trx_transfer_topic:${j}", ("j", transfer_trx_topic));
+                if (options.count("kafka-block_accepted_topic") != 0) {
+                    accept_block_topic = (char *) (options.at("kafka-block_accepted_topic").as<std::string>().c_str());
+                }
+                ilog("kafka-block_accepted_topic:${j}", ("j", accept_block_topic));
 
-        if (options.count("kafka-uri")) {
-            ilog("initializing kafka_plugin");
-            my->configured = true;
+                if(0!=my->producer->kafka_init(brokers_str,accept_trx_topic,applied_trx_topic,transfer_trx_topic, accept_block_topic)){
+                    elog("kafka_plugin initialized fail");
+                }else{
+                    ilog("kafka_plugin initialized ok");
+                }
+            }
+
+            if (options.count("kafka-uri")) {
+                my->configured = true;
 
                 if( options.count( "kafka-queue-size" )) {
                     my->queue_size = options.at( "kafka-queue-size" ).as<uint32_t>();
@@ -584,22 +607,22 @@ void kafka_plugin_impl::filter_traction_trace(const chain::transaction_trace_ptr
                 my->chain_id.emplace(chain.get_chain_id());
 
                 my->accepted_block_connection.emplace( chain.accepted_block.connect( [&]( const chain::block_state_ptr& bs ) {
-                            my->accepted_block(bs);
-                        }));
+                    my->accepted_block(bs);
+                }));
 
                 my->irreversible_block_connection.emplace(
-                        chain.irreversible_block.connect([&](const chain::block_state_ptr &bs) {
-                            my->applied_irreversible_block(bs);
-                        }));
+                    chain.irreversible_block.connect([&](const chain::block_state_ptr &bs) {
+                    my->applied_irreversible_block(bs);
+                }));
 
                 my->accepted_transaction_connection.emplace(
-                        chain.accepted_transaction.connect([&](const chain::transaction_metadata_ptr &t) {
-                            my->accepted_transaction(t);
-                        }));
+                    chain.accepted_transaction.connect([&](const chain::transaction_metadata_ptr &t) {
+                    my->accepted_transaction(t);
+                }));
                 my->applied_transaction_connection.emplace(
-                        chain.applied_transaction.connect([&](const chain::transaction_trace_ptr &t) {
-                            my->applied_transaction(t);
-                        }));
+                    chain.applied_transaction.connect([&](const chain::transaction_trace_ptr &t) {
+                    my->applied_transaction(t);
+                }));
                 my->init();
             } else {
                 wlog( "fscio::kafka_plugin configured, but no --kafka-uri specified." );
