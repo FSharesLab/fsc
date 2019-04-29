@@ -86,6 +86,7 @@
 		printf "\\n\\tThe following dependencies are required to install FSCIO.\\n"
 		printf "\\n\\t${DISPLAY}\\n\\n"
 		printf "\\tDo you wish to install these dependencies?\\n"
+		if is_noninteractive; then exec <<< "1"; fi
 		select yn in "Yes" "No"; do
 			case $yn in
 				[Yy]* ) 
@@ -555,7 +556,7 @@
 			exit 1
 		fi
 		
-	    if ! cd "${TEMP_DIR}"
+	        if ! cd "${TEMP_DIR}"
 		then
 			printf "\\tUnable to enter directory %s.\\n" "${TEMP_DIR}"
 			printf "\\tExiting now.\\n\\n"

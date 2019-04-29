@@ -17,7 +17,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules")
 if (UNIX)
    if (APPLE)
       if (LLVM_DIR STREQUAL "" OR NOT LLVM_DIR)
-         set(LLVM_DIR "/usr/local/Cellar/llvm@4/4.0.1/lib/cmake/llvm")
+         set(LLVM_DIR "/usr/local/opt/llvm@4/lib/cmake/llvm/")
       endif()
    endif()
 endif()
@@ -126,6 +126,11 @@ FIND_PACKAGE(Boost 1.67 REQUIRED COMPONENTS
     context
     locale
     iostreams)
+
+# Some new stdlibc++s will #error on <experimental/string_view>; a problem for boost pre-1.69
+if( APPLE AND UNIX )
+   add_definitions(-DBOOST_ASIO_DISABLE_STD_EXPERIMENTAL_STRING_VIEW)
+endif()
 
 if( WIN32 )
 
