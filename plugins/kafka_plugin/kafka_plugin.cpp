@@ -106,6 +106,7 @@ using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
 
         uint32_t start_block_num = 0;
         bool start_block_reached = false;
+        bool is_producer = false;
 
         size_t queue_size = 10000;
         std::deque<chain::transaction_metadata_ptr> transaction_metadata_queue;
@@ -189,6 +190,9 @@ using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
 
     void kafka_plugin_impl::applied_transaction(const chain::transaction_trace_ptr &t) {
         try {
+            if(!is_producer && !t->producer_block_id.valid()){
+                return;
+            }
             auto &chain = chain_plug->chain();
             trasaction_info_st transactioninfo = trasaction_info_st{
                     .block_number = chain.pending_block_state()->block_num,
@@ -629,6 +633,10 @@ using kafka_producer_ptr = std::shared_ptr<class kafka_producer>;
                 wlog( "kafka_plugin disabled." );
             }
 
+            if( options.count( "producer-name") ) {
+                wlog( "kafka plugin not recommended on producer node" );
+                my->is_producer = true;
+            }
         }
 
         FC_LOG_AND_RETHROW()
