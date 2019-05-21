@@ -1,6 +1,8 @@
 #! /bin/bash
 
-VERSION_TAG=$1
+VARIANT=$1
+VERSION_TAG=$2
+
 VERSION_NO_SUFFIX="@VERSION_MAJOR@.@VERSION_MINOR@.@VERSION_PATCH@"
 VERSION_SUFFIX="@VERSION_SUFFIX@"
 VERSION="@VERSION_FULL@"
@@ -12,19 +14,15 @@ DESC="@DESC@"
 URL="@URL@"
 EMAIL="@EMAIL@"
 
-if [[ -z $1 ]]; then
-   VERSION_TAG="dev"
-elif [[ ${VERSION_TAG} != "dev" && ${VERSION_TAG} != "beta" && ${VERSION_TAG} != "dawn" && ${VERSION_TAG} != "release" ]]; then
-  echo "Error, unknown package TAG. Use either ['dev', 'beta', 'dawn','release'] !"
-  exit -1
-fi
-
-len=`echo "$2"|sed 's/[0-9]//g'|sed 's/-//g'`
-
-if [[ -n $1 && -n $2 && -n $len ]]; then
-  echo "Error, The version suffix must be a number, iput is $2!"
-  exit -1
-fi
+if [[ -n $2 && -n $3 ]]; then
+  len=`echo "$3"|sed 's/[0-9]//g'|sed 's/-//g'`
+  if [[ -n $2 && -n $3 && -n $len ]]; then
+    echo "Error, The version suffix must be a number, iput is $3!"
+    exit -1
+  else 
+    VERSION_SUFFIX=$3
+  fi
+fi 
 
 export BUILD_DIR
 export VERSION_TAG
@@ -39,7 +37,14 @@ export EMAIL
 
 mkdir tmp
 
-bash generate_deb.sh
+if [[ ${VARIANT} == "deb" ]]; then
+   bash generate_deb.sh
+elif [[ ${VARIANT} == "rpm" ]]; then
+   bash generate_rpm.sh
+else
+   echo "Error, unknown package type. Use either ['deb', 'rpm']."
+   exit -1
+fi   
 
 BUILDSTATUS=$?
 

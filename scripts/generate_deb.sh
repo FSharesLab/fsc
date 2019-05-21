@@ -11,7 +11,7 @@ if [[ -z $RELEASE ]]; then
   RELEASE="1"
 fi
 
-NAME="${PROJECT}_${VERSION_TAG}_${VERSION_NO_SUFFIX}-${RELEASE}_amd64"
+NAME="${PROJECT}-${VERSION-TAG}-${VERSION_NO_SUFFIX}-${RELEASE}_amd64"
 
 mkdir -p ${PROJECT}-${VERSION_TAG}/DEBIAN
 chmod 0755 ${PROJECT}-${VERSION_TAG}/DEBIAN
@@ -35,7 +35,7 @@ bash generate_tarball.sh ${NAME}.tar.gz
 tar -xvzf ${NAME}.tar.gz -C ${PROJECT}-${VERSION_TAG}
 dpkg-deb --build ${PROJECT}-${VERSION_TAG}
 BUILDSTATUS=$?
-mv ${PROJECT}-${VERSION_TAG}.deb ${NAME}.deb
+mv -f ${PROJECT}-${VERSION_TAG}.deb ${NAME}.deb
 rm -r ${PROJECT}-${VERSION_TAG}
 
 exit $BUILDSTATUS

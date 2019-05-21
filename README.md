@@ -50,7 +50,7 @@ $ git clone https://github.com/FutureSharesCloud/fsc.git
 $ cd fsc
 $ ./fscio_build.sh
 $ cd build/packages/
-$ bash ./generate_package.sh [dev/beta/dawn/release] <build id[must be a num,Identifies the number of compilations]>
+$ bash ./generate_package.sh [deb/rpm] [dev/beta/dawn/release] <build id[must be a num,Identifies the number of compilations]>
 ```
 
 ##### Install FSCIO deb Package
