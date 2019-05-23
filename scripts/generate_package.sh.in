@@ -14,6 +14,18 @@ DESC="@DESC@"
 URL="@URL@"
 EMAIL="@EMAIL@"
 
+if [[ ${VARIANT} != "deb" && ${VARIANT} != "rpm" ]]; then
+  echo "Error, unknown package type. Use either ['deb', 'rpm']."
+  exit -1
+fi
+
+if [[ -z $2 ]]; then
+   VERSION_TAG="dev"
+elif [[ ${VERSION_TAG} != "dev" && ${VERSION_TAG} != "beta" && ${VERSION_TAG} != "dawn" && ${VERSION_TAG} != "release" ]]; then
+  echo "Error, unknown package TAG. Use either ['dev', 'beta', 'dawn','release'] !"
+  exit -1
+fi
+
 if [[ -n $2 && -n $3 ]]; then
   len=`echo "$3"|sed 's/[0-9]//g'|sed 's/-//g'`
   if [[ -n $2 && -n $3 && -n $len ]]; then

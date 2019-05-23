@@ -493,8 +493,8 @@
 		printf "\\n\\tWASM found @ %s/opt/wasm\\n\\n" "${HOME}"
 	fi
 
-	printf "\\n\\tChecking for kafka lib support .\\n"
-	if [ ! -e "/etc/ld.so.conf.d/rdkafka.conf" ]; then
+    printf "\\n\\tChecking for kafka lib support .\\n"
+	if [ ! -e "/usr/local/lib/librdkafka.a" ]; then
 		printf "\\tInstalling kafka lib . \\n"
 		if ! cd "${TEMP_DIR}"
 		then
@@ -502,20 +502,7 @@
 			printf "\\n\\tExiting now.\\n"
 			exit 1;
 		fi
-		if ! mkdir "${TEMP_DIR}/librdkafka"  2>/dev/null
-		then
-			printf "\\n\\tUnable to create directory %s/librdkafka.\\n" "${TEMP_DIR}"
-			printf "\\n\\tExiting now.\\n"
-			rm -rf "${TEMP_DIR}/librdkafka"
-			exit 1;
-		fi
-		if ! cd "${TEMP_DIR}/librdkafka"
-		then
-			printf "\\n\\tUnable to enter directory %s/librdkafka.\\n" "${TEMP_DIR}"
-			printf "\\n\\tExiting now.\\n"
-			rm -rf "${TEMP_DIR}/librdkafka"
-			exit 1;
-		fi
+
 		if ! git clone --depth 1 --single-branch --branch v1.0.0 https://github.com/edenhill/librdkafka.git 
 		then
 			printf "\\tUnable to clone llvm repo @ https://github.com/edenhill/librdkafka.git.\\n"
@@ -555,8 +542,8 @@
 			rm -rf "${TEMP_DIR}/librdkafka"
 			exit 1
 		fi
-		
-	        if ! cd "${TEMP_DIR}"
+
+	    if ! cd "${TEMP_DIR}"
 		then
 			printf "\\tUnable to enter directory %s.\\n" "${TEMP_DIR}"
 			printf "\\tExiting now.\\n\\n"
@@ -569,22 +556,7 @@
 			printf "\\n\\tExiting now.\\n"
 			exit 1;
 		fi
-		if ! sudo tee > /dev/null "/etc/ld.so.conf.d/rdkafka.conf" <<rdkafkaconf
-# libc default configuration
-/usr/local/lib
-rdkafkaconf
-		then
-			printf "\\tUnable to write to file %s.\\n" "/etc/ld.so.conf.d/rdkafka.conf"
-			printf "\\n\\tExiting now.\\n\\n"
-			exit 1;
-		fi
 
-		if ! sudo ldconfig
-		then
-			printf "\\tUnable to config ld.\\n" 
-			printf "\\n\\tExiting now.\\n"
-			exit 1;
-		fi
 		printf "\\n\\librdkafka successffully installed.\\n" 
 	else
 		printf "\\n\\tlibrdkafka found.\\n" 

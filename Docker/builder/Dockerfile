@@ -62,8 +62,4 @@ RUN git clone --depth 1 --single-branch --branch v1.0.0 https://github.com/edenh
     && ./configure \
     && make  \
     && make install \
-    && touch /etc/ld.so.conf.d/rdkafka.conf \
-    && echo "# libc default configuration" >> /etc/ld.so.conf.d/rdkafka.conf \
-    && echo "/usr/local/lib" >> /etc/ld.so.conf.d/rdkafka.conf \
-    && ldconfig \
     && cd ../ && rm -rf librdkafka
