@@ -67,6 +67,7 @@ const static uint32_t   default_net_usage_leeway                     = 500; // T
 const static uint32_t   default_context_free_discount_net_usage_num  = 20; // TODO: is this reasonable?
 const static uint32_t   default_context_free_discount_net_usage_den  = 100;
 const static uint32_t   transaction_id_net_usage                     = 32; // 32 bytes for the size of a transaction id
+const static bool       support_only_bill_first_authorizer           = true; // support only bill first authorizer
 
 const static uint32_t   default_max_block_cpu_usage                 = 200'000; /// max block cpu usage in microseconds
 const static uint32_t   default_target_block_cpu_usage_pct          = 10 * percent_1;
