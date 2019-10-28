@@ -40,9 +40,31 @@ public:
    void plugin_startup();
    void plugin_shutdown();
 
+   struct transfer {
+      account_name                     from;
+      account_name                     to;
+      asset                            quantity;
+      std::string                      memo;
+      static action_name get_name() {
+         return N(transfer);
+      }
+   };
+
+   struct transferext {
+      std::string                     from_address;
+      std::string                     to_address;
+      asset                           quantity;
+      std::string                     memo;
+      static action_name get_name() {
+         return N(transferext);
+      }
+   };
+
 private:
    mongo_db_plugin_impl_ptr my;
 };
 
 }
+FC_REFLECT( eosio::mongo_db_plugin::transfer                         , (from)(to)(quantity)(memo) )
+FC_REFLECT( eosio::mongo_db_plugin::transferext                      , (from_address)(to_address)(quantity)(memo) )
 

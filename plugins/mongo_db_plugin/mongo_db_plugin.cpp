@@ -10,17 +10,17 @@
 #include <fscio/chain/types.hpp>
 
 #include <fc/io/json.hpp>
+#include <fc/log/logger_config.hpp>
 #include <fc/utf8.hpp>
 #include <fc/variant.hpp>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/chrono.hpp>
 #include <boost/signals2/connection.hpp>
-#include <boost/thread/thread.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/condition_variable.hpp>
 
 #include <queue>
+#include <thread>
+#include <mutex>
 
 #include <bsoncxx/builder/basic/kvp.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
@@ -101,7 +101,8 @@ public:
                           bool executed, const std::chrono::milliseconds& now,
                           bool& write_ttrace );
 
-   void update_account(const chain::action& act);
+   void update_account(const chain::action_trace& atrace, const std::chrono::milliseconds& now,
+                          const std::chrono::milliseconds& block_time);
 
    void add_pub_keys( const vector<chain::key_weight>& keys, const account_name& name,
                       const permission_name& permission, const std::chrono::milliseconds& now );
@@ -118,6 +119,7 @@ public:
 
    void init();
    void wipe_database();
+   void create_expiration_index(mongocxx::collection& collection, uint32_t expire_after_seconds);
 
    template<typename Queue, typename Entry> void queue(Queue& queue, const Entry& e);
 
@@ -136,6 +138,7 @@ public:
    bool store_transactions = true;
    bool store_transaction_traces = true;
    bool store_action_traces = true;
+   uint32_t expire_after_seconds = 0;
 
    std::string db_name;
    mongocxx::instance mongo_inst;
@@ -162,9 +165,9 @@ public:
    std::deque<chain::block_state_ptr> block_state_process_queue;
    std::deque<chain::block_state_ptr> irreversible_block_state_queue;
    std::deque<chain::block_state_ptr> irreversible_block_state_process_queue;
-   boost::mutex mtx;
-   boost::condition_variable condition;
-   boost::thread consume_thread;
+   std::mutex mtx;
+   std::condition_variable condition;
+   std::thread consume_thread;
    std::atomic_bool done{false};
    std::atomic_bool startup{true};
    fc::optional<chain::chain_id_type> chain_id;
@@ -203,6 +206,21 @@ public:
    static const std::string accounts_col;
    static const std::string pub_keys_col;
    static const std::string account_controls_col;
+
+   // for get currency balance
+   mongocxx::collection _currency_balance;
+   static const std::string currency_balance_col;
+   chain_plugin* chain_plug_handle;
+   void update_currency_balance( const chain::action_trace& atrace, string symbol_name,
+                                 const std::chrono::milliseconds& now,
+								         const std::chrono::milliseconds& block_time );
+   // transfer history
+   mongocxx::collection _transfer_history;
+   static const std::string transfer_history_col;
+   void update_transfer_history( const chain::action_trace& atrace,
+                                 const chain::transaction_trace_ptr& t,
+                                 bool executed, const std::chrono::milliseconds& now,
+                                 const std::chrono::milliseconds& block_time);
 };
 
 const action_name mongo_db_plugin_impl::newaccount = chain::newaccount::get_name();
@@ -220,6 +238,8 @@ const std::string mongo_db_plugin_impl::action_traces_col = "action_traces";
 const std::string mongo_db_plugin_impl::accounts_col = "accounts";
 const std::string mongo_db_plugin_impl::pub_keys_col = "pub_keys";
 const std::string mongo_db_plugin_impl::account_controls_col = "account_controls";
+const std::string mongo_db_plugin_impl::currency_balance_col = "currency_balance";
+const std::string mongo_db_plugin_impl::transfer_history_col = "transfer_history";
 
 bool mongo_db_plugin_impl::filter_include( const account_name& receiver, const action_name& act_name,
                                            const vector<chain::permission_level>& authorization ) const
@@ -290,7 +310,7 @@ bool mongo_db_plugin_impl::filter_include( const transaction& trx ) const
 
 template<typename Queue, typename Entry>
 void mongo_db_plugin_impl::queue( Queue& queue, const Entry& e ) {
-   boost::mutex::scoped_lock lock( mtx );
+   std::unique_lock<std::mutex> lock( mtx );
    auto queue_size = queue.size();
    if( queue_size > max_queue_size ) {
       lock.unlock();
@@ -298,7 +318,7 @@ void mongo_db_plugin_impl::queue( Queue& queue, const Entry& e ) {
       queue_sleep_time += 10;
       if( queue_sleep_time > 1000 )
          wlog("queue size: ${q}", ("q", queue_size));
-      boost::this_thread::sleep_for( boost::chrono::milliseconds( queue_sleep_time ));
+      std::this_thread::sleep_for( std::chrono::milliseconds( queue_sleep_time ));
       lock.lock();
    } else {
       queue_sleep_time -= 10;
@@ -404,9 +424,11 @@ void mongo_db_plugin_impl::consume_blocks() {
       _block_states = mongo_conn[db_name][block_states_col];
       _pub_keys = mongo_conn[db_name][pub_keys_col];
       _account_controls = mongo_conn[db_name][account_controls_col];
+      _currency_balance = mongo_conn[db_name][currency_balance_col];
+      _transfer_history = mongo_conn[db_name][transfer_history_col];
 
       while (true) {
-         boost::mutex::scoped_lock lock(mtx);
+         std::unique_lock<std::mutex> lock(mtx);
          while ( transaction_metadata_queue.empty() &&
                  transaction_trace_queue.empty() &&
                  block_state_queue.empty() &&
@@ -527,6 +549,16 @@ auto find_block( mongocxx::collection& blocks, const string& id ) {
    mongocxx::options::find options;
    options.projection( make_document( kvp( "_id", 1 )) ); // only return _id
    return blocks.find_one( make_document( kvp( "block_id", id )), options);
+}
+
+auto find_trx( mongocxx::collection& trxs, const string& trx_id,  uint32_t block_num) {
+   using bsoncxx::builder::basic::make_document;
+   using bsoncxx::builder::basic::kvp;
+   using namespace bsoncxx::types;
+
+   mongocxx::options::find options;
+   options.projection( make_document( kvp( "_id", 1 )) ); // only return _id
+   return trxs.find_one( make_document( kvp( "trx_id", trx_id),kvp( "block_num", b_int32{static_cast<int32_t>(block_num)})), options);
 }
 
 void handle_mongo_exception( const std::string& desc, int line_num ) {
@@ -652,6 +684,18 @@ optional<abi_serializer> mongo_db_plugin_impl::get_abi_serializer( account_name 
                      }
                   }
                }
+               // mongo does not like empty json keys
+               // make abi_serializer use empty_name instead of "" for the action data
+               for( auto& s : abi.structs ) {
+                  if( s.name.empty() ) {
+                     s.name = "empty_struct_name";
+                  }
+                  for( auto& f : s.fields ) {
+                     if( f.name.empty() ) {
+                        f.name = "empty_field_name";
+                     }
+                  }
+               }
                abis.set_abi( abi, abi_serializer_max_time );
                entry.serializer.emplace( std::move( abis ) );
                abi_cache_index.insert( entry );
@@ -767,8 +811,8 @@ void mongo_db_plugin_impl::_process_accepted_transaction( const chain::transacti
    }
 
    string signing_keys_json;
-   if( t->signing_keys.valid() ) {
-      signing_keys_json = fc::json::to_string( t->signing_keys->second );
+   if( t->signing_keys_future.valid() ) {
+      signing_keys_json = fc::json::to_string( std::get<2>( t->signing_keys_future.get() ) );
    } else {
       flat_set<public_key_type> keys;
       trx.get_signature_keys( *chain_id, fc::time_point::maximum(), keys, false );
@@ -816,8 +860,14 @@ mongo_db_plugin_impl::add_action_trace( mongocxx::bulk_write& bulk_action_traces
    using namespace bsoncxx::types;
    using bsoncxx::builder::basic::kvp;
 
+   const auto block_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::microseconds{atrace.block_time.to_time_point().time_since_epoch().count()} );
+
    if( executed && atrace.receipt.receiver == chain::config::system_account_name ) {
-      update_account( atrace.act );
+      update_account( atrace, now, block_time );
+   }
+   else if( atrace.act.name == name("transfer")) {
+      update_transfer_history( atrace, t, executed, now, block_time );
    }
 
    bool added = false;
@@ -826,12 +876,10 @@ mongo_db_plugin_impl::add_action_trace( mongocxx::bulk_write& bulk_action_traces
    write_ttrace |= in_filter;
    if( start_block_reached && store_action_traces && in_filter ) {
       auto action_traces_doc = bsoncxx::builder::basic::document{};
-      const chain::base_action_trace& base = atrace; // without inline action traces
-
       // improve data distributivity when using mongodb sharding
       action_traces_doc.append( kvp( "_id", make_custom_oid() ) );
 
-      auto v = to_variant_with_abi( base );
+      auto v = to_variant_with_abi( atrace );
       string json = fc::json::to_string( v );
       try {
          const auto& value = bsoncxx::from_json( json );
@@ -855,10 +903,6 @@ mongo_db_plugin_impl::add_action_trace( mongocxx::bulk_write& bulk_action_traces
       mongocxx::model::insert_one insert_op{action_traces_doc.view()};
       bulk_action_traces.append( insert_op );
       added = true;
-   }
-
-   for( const auto& iline_atrace : atrace.inline_traces ) {
-      added |= add_action_trace( bulk_action_traces, iline_atrace, t, executed, now, write_ttrace );
    }
 
    return added;
@@ -1087,9 +1131,11 @@ void mongo_db_plugin_impl::_process_irreversible_block(const chain::block_state_
    if( store_transactions ) {
       const auto block_num = bs->block->block_num();
       bool transactions_in_block = false;
+      bool transfer_in_block = false;
       mongocxx::options::bulk_write bulk_opts;
       bulk_opts.ordered( false );
       auto bulk = _trans.create_bulk_write( bulk_opts );
+      auto bulk_transfer = _transfer_history.create_bulk_write( bulk_opts );
 
       for( const auto& receipt : bs->block->transactions ) {
          string trx_id_str;
@@ -1112,6 +1158,14 @@ void mongo_db_plugin_impl::_process_irreversible_block(const chain::block_state_
          update_op.upsert( false );
          bulk.append( update_op );
          transactions_in_block = true;
+
+         mongocxx::model::update_one update_transfer_op{make_document( kvp( "trx_id", trx_id_str ), kvp( "block_num", b_int32{static_cast<int32_t>(block_num)} ) ), update_doc.view()};
+         update_transfer_op.upsert( false );
+         
+         if(!!find_trx(_transfer_history, trx_id_str, block_num)) {
+            bulk_transfer.append( update_transfer_op );
+            transfer_in_block = true;
+         }
       }
 
       if( transactions_in_block ) {
@@ -1121,6 +1175,16 @@ void mongo_db_plugin_impl::_process_irreversible_block(const chain::block_state_
             }
          } catch( ... ) {
             handle_mongo_exception( "bulk transaction insert", __LINE__ );
+         }
+      }
+
+      if (transfer_in_block) {
+         try {
+            if( !bulk_transfer.execute() ) {
+               FSC_ASSERT( false, chain::mongo_db_insert_fail, "Bulk transfer transaction insert failed for block: ${bid}", ("bid", block_id) );
+            }
+         } catch( ... ) {
+            handle_mongo_exception( "bulk transfer transaction insert", __LINE__ );
          }
       }
    }
@@ -1240,7 +1304,7 @@ void mongo_db_plugin_impl::remove_account_control( const account_name& name, con
 
 namespace {
 
-void create_account( mongocxx::collection& accounts, const name& name, std::chrono::milliseconds& now ) {
+void create_account( mongocxx::collection& accounts, const name& name, const std::chrono::milliseconds& now, const std::chrono::milliseconds& block_time ) {
    using namespace bsoncxx::types;
    using bsoncxx::builder::basic::kvp;
    using bsoncxx::builder::basic::make_document;
@@ -1251,6 +1315,8 @@ void create_account( mongocxx::collection& accounts, const name& name, std::chro
    const string name_str = name.to_string();
    auto update = make_document(
          kvp( "$set", make_document( kvp( "name", name_str),
+                                     kvp( "block_time", b_date{block_time}),
+                                     kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
                                      kvp( "createdAt", b_date{now} ))));
    try {
       if( !accounts.update_one( make_document( kvp( "name", name_str )), update.view(), update_opts )) {
@@ -1263,31 +1329,26 @@ void create_account( mongocxx::collection& accounts, const name& name, std::chro
 
 }
 
-void mongo_db_plugin_impl::update_account(const chain::action& act)
+void mongo_db_plugin_impl::update_account(const chain::action_trace& atrace, const std::chrono::milliseconds& now, const std::chrono::milliseconds& block_time)
 {
    using bsoncxx::builder::basic::kvp;
    using bsoncxx::builder::basic::make_document;
    using namespace bsoncxx::types;
 
+   chain::action act = atrace.act;
    if (act.account != chain::config::system_account_name)
       return;
 
    try {
       if( act.name == newaccount ) {
-         std::chrono::milliseconds now = std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::microseconds{fc::time_point::now().time_since_epoch().count()} );
          auto newacc = act.data_as<chain::newaccount>();
-
-         create_account( _accounts, newacc.name, now );
-
+         create_account( _accounts, newacc.name, now, block_time );
          add_pub_keys( newacc.owner.keys, newacc.name, owner, now );
          add_account_control( newacc.owner.accounts, newacc.name, owner, now );
          add_pub_keys( newacc.active.keys, newacc.name, active, now );
          add_account_control( newacc.active.accounts, newacc.name, active, now );
 
       } else if( act.name == updateauth ) {
-         auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::microseconds{fc::time_point::now().time_since_epoch().count()} );
          const auto update = act.data_as<chain::updateauth>();
          remove_pub_keys(update.account, update.permission);
          remove_account_control(update.account, update.permission);
@@ -1300,15 +1361,13 @@ void mongo_db_plugin_impl::update_account(const chain::action& act)
          remove_account_control(del.account, del.permission);
 
       } else if( act.name == setabi ) {
-         auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::microseconds{fc::time_point::now().time_since_epoch().count()} );
          auto setabi = act.data_as<chain::setabi>();
 
          abi_cache_index.erase( setabi.account );
 
          auto account = find_account( _accounts, setabi.account );
          if( !account ) {
-            create_account( _accounts, setabi.account, now );
+            create_account( _accounts, setabi.account, now, block_time);
             account = find_account( _accounts, setabi.account );
          }
          if( account ) {
@@ -1337,6 +1396,107 @@ void mongo_db_plugin_impl::update_account(const chain::action& act)
    } catch( fc::exception& e ) {
       // if unable to unpack native type, skip account creation
    }
+}
+
+void mongo_db_plugin_impl::update_currency_balance( const chain::action_trace& atrace, string symbol_name, const std::chrono::milliseconds& now, const std::chrono::milliseconds& block_time ) {
+   using namespace bsoncxx::types;
+   using bsoncxx::builder::basic::kvp;
+   using bsoncxx::builder::basic::make_document;
+
+   auto receiver = atrace.receipt.receiver;
+
+   chain_apis::read_only::get_currency_balance_params params = chain_apis::read_only::get_currency_balance_params {
+      .code    = atrace.act.account,
+      .account = receiver,
+      .symbol = symbol_name
+   };
+
+   chain_apis::read_only ro_api = chain_plug_handle->get_read_only_api();
+   vector<asset> asserts = ro_api.get_currency_balance( params );
+   if ( !asserts.empty() ) {
+      for( const auto& balance : asserts ) {
+         // ilog( "${a}'s balance: ${b}", ("a", atrace.receipt.receiver.to_string())("b", balance.to_string()) );
+
+         mongocxx::options::update update_opts{};
+         update_opts.upsert( true );
+
+         const double balance_real = balance.to_real();
+         const string receiver_str = receiver.to_string();
+
+         auto update = make_document(
+            kvp( "$set", make_document( kvp( "name", receiver_str),
+                              kvp( "contract", atrace.act.account.to_string()),
+                              kvp( "balance", balance_real),
+                              kvp( "precision", b_int32{static_cast<int32_t>(balance.precision())}),
+                              kvp( "symbol", balance.symbol_name()),
+                              kvp( "block_time", b_date{block_time}),
+                              kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
+                              kvp( "updatedAt", b_date{now} ))
+            )
+         );
+
+         try {
+            if( !_currency_balance.update_one( make_document( 
+               kvp( "name", receiver_str ), 
+               kvp( "contract", atrace.act.account.to_string()), 
+               kvp( "symbol", balance.symbol_name())), 
+               update.view(), update_opts )) {
+               FSC_ASSERT( false, chain::mongo_db_update_fail, "Failed to insert account ${n}", ("n", receiver));
+            }
+         } catch (...) {
+            handle_mongo_exception( "update_currency", __LINE__ );
+         }
+      }
+   }
+}
+
+void mongo_db_plugin_impl::update_transfer_history( const chain::action_trace& atrace,
+                                        const chain::transaction_trace_ptr& t,
+                                        bool executed, const std::chrono::milliseconds& now,
+                                        const std::chrono::milliseconds& block_time) {
+   using namespace bsoncxx::types;
+   using bsoncxx::builder::basic::kvp;
+   using bsoncxx::builder::basic::make_document;
+
+   auto receiver = atrace.receipt.receiver;
+   auto transfer_data = fc::raw::unpack<mongo_db_plugin::transfer>(atrace.act.data);
+   if(receiver == transfer_data.from) { // Filter only records once
+      mongocxx::options::update update_opts{};
+      update_opts.upsert( true );
+
+      auto update = make_document(
+         kvp( "$set", make_document( 
+                           kvp( "trx_id", atrace.trx_id.str()),
+                           //kvp( "block_id", block_id_str ),
+                           kvp( "block_num", b_int32{static_cast<int32_t>(atrace.block_num)}),
+                           kvp( "from", transfer_data.from.to_string()),
+                           kvp( "to", transfer_data.to.to_string()),
+                           kvp( "contract", atrace.act.account.to_string()),
+                           kvp( "quantity", transfer_data.quantity.to_real()),
+                           kvp( "symbol", transfer_data.quantity.symbol_name()),
+                           kvp( "precision", transfer_data.quantity.precision()),
+                           kvp( "valid", b_bool{t->receipt.valid()} ),
+                           kvp( "status", b_int32{static_cast<int32_t>(t->receipt->status)}),
+                           kvp( "irreversible", b_bool{false} ),
+                           kvp( "elapsed", atrace.elapsed.count() ),
+                           kvp( "block_time", b_date{block_time}),
+                           kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
+                           kvp( "createdAt", b_date{now} ))
+         )
+      );
+
+      try {
+         if( !_transfer_history.update_one( make_document( 
+            kvp( "trx_id", atrace.trx_id.str() ), 
+            kvp( "block_num", b_int32{static_cast<int32_t>(atrace.block_num)})), 
+            update.view(), update_opts )) {
+            FSC_ASSERT( false, chain::mongo_db_update_fail, "Failed to insert trx_id ${n}", ("n", atrace.trx_id.str()));
+         }
+      } catch (...) {
+         handle_mongo_exception( "update_transfer_history", __LINE__ );
+      }
+   }
+   update_currency_balance(atrace, transfer_data.quantity.symbol_name(), now, block_time);
 }
 
 mongo_db_plugin_impl::mongo_db_plugin_impl()
@@ -1373,6 +1533,8 @@ void mongo_db_plugin_impl::wipe_database() {
    auto accounts = mongo_conn[db_name][accounts_col];
    auto pub_keys = mongo_conn[db_name][pub_keys_col];
    auto account_controls = mongo_conn[db_name][account_controls_col];
+   auto currency_balance = mongo_conn[db_name][currency_balance_col];
+   auto transfer_history = mongo_conn[db_name][transfer_history_col];
 
    block_states.drop();
    blocks.drop();
@@ -1382,7 +1544,42 @@ void mongo_db_plugin_impl::wipe_database() {
    accounts.drop();
    pub_keys.drop();
    account_controls.drop();
+   currency_balance.drop();
+   transfer_history.drop();
    ilog("done wipe_database");
+}
+
+void mongo_db_plugin_impl::create_expiration_index(mongocxx::collection& collection, uint32_t expire_after_seconds) {
+   using bsoncxx::builder::basic::make_document;
+   using bsoncxx::builder::basic::kvp;
+
+   auto indexes = collection.indexes();
+   for( auto& index : indexes.list()) {
+      auto key = index["key"];
+      if( !key ) {
+         continue;
+      }
+      auto field = key["createdAt"];
+      if( !field ) {
+         continue;
+      }
+
+      auto ttl = index["expireAfterSeconds"];
+      if( ttl && ttl.get_int32() == expire_after_seconds ) {
+         return;
+      } else {
+         auto name = index["name"].get_utf8();
+         ilog( "mongo db drop ttl index for collection ${collection}", ( "collection", collection.name().to_string()));
+         indexes.drop_one( name.value );
+         break;
+      }
+   }
+
+   mongocxx::options::index index_options{};
+   index_options.expire_after( std::chrono::seconds( expire_after_seconds ));
+   index_options.background( true );
+   ilog( "mongo db create ttl index for collection ${collection}", ( "collection", collection.name().to_string()));
+   collection.create_index( make_document( kvp( "createdAt", 1 )), index_options );
 }
 
 void mongo_db_plugin_impl::init() {
@@ -1415,42 +1612,73 @@ void mongo_db_plugin_impl::init() {
          }
 
          try {
+            // MongoDB administrators (to enable sharding) :
+            //   1. enableSharding database (default to EOS)
+            //   2. shardCollection: blocks, action_traces, transaction_traces, especially action_traces
+            //   3. Compound index with shard key (default to _id below), to improve query performance.
+
             // blocks indexes
             auto blocks = mongo_conn[db_name][blocks_col];
-            blocks.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1 })xxx" ));
-            blocks.create_index( bsoncxx::from_json( R"xxx({ "block_id" : 1 })xxx" ));
+            blocks.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1, "_id" : 1 })xxx" ));
+            blocks.create_index( bsoncxx::from_json( R"xxx({ "block_id" : 1, "_id" : 1 })xxx" ));
 
             auto block_states = mongo_conn[db_name][block_states_col];
-            block_states.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1 })xxx" ));
-            block_states.create_index( bsoncxx::from_json( R"xxx({ "block_id" : 1 })xxx" ));
+            block_states.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1, "_id" : 1 })xxx" ));
+            block_states.create_index( bsoncxx::from_json( R"xxx({ "block_id" : 1, "_id" : 1 })xxx" ));
 
             // accounts indexes
-            accounts.create_index( bsoncxx::from_json( R"xxx({ "name" : 1 })xxx" ));
+            accounts.create_index( bsoncxx::from_json( R"xxx({ "name" : 1, "_id" : 1 })xxx" ));
 
             // transactions indexes
             auto trans = mongo_conn[db_name][trans_col];
-            trans.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1 })xxx" ));
+            trans.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1, "_id" : 1 })xxx" ));
 
             auto trans_trace = mongo_conn[db_name][trans_traces_col];
-            trans_trace.create_index( bsoncxx::from_json( R"xxx({ "id" : 1 })xxx" ));
+            trans_trace.create_index( bsoncxx::from_json( R"xxx({ "id" : 1, "_id" : 1 })xxx" ));
 
             // action traces indexes
             auto action_traces = mongo_conn[db_name][action_traces_col];
-            action_traces.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1 })xxx" ));
+            action_traces.create_index( bsoncxx::from_json( R"xxx({ "block_num" : 1, "_id" : 1 })xxx" ));
 
             // pub_keys indexes
             auto pub_keys = mongo_conn[db_name][pub_keys_col];
-            pub_keys.create_index( bsoncxx::from_json( R"xxx({ "account" : 1, "permission" : 1 })xxx" ));
-            pub_keys.create_index( bsoncxx::from_json( R"xxx({ "public_key" : 1 })xxx" ));
+            pub_keys.create_index( bsoncxx::from_json( R"xxx({ "account" : 1, "permission" : 1, "_id" : 1 })xxx" ));
+            pub_keys.create_index( bsoncxx::from_json( R"xxx({ "public_key" : 1, "_id" : 1 })xxx" ));
 
             // account_controls indexes
             auto account_controls = mongo_conn[db_name][account_controls_col];
             account_controls.create_index(
-                  bsoncxx::from_json( R"xxx({ "controlled_account" : 1, "controlled_permission" : 1 })xxx" ));
-            account_controls.create_index( bsoncxx::from_json( R"xxx({ "controlling_account" : 1 })xxx" ));
+                  bsoncxx::from_json( R"xxx({ "controlled_account" : 1, "controlled_permission" : 1, "_id" : 1 })xxx" ));
+            account_controls.create_index( bsoncxx::from_json( R"xxx({ "controlling_account" : 1, "_id" : 1 })xxx" ));
+            // currency_balance index
+            auto currency_balance = mongo_conn[db_name][currency_balance_col];
+            currency_balance.create_index( bsoncxx::from_json( R"xxx({ "name" : 1 })xxx" ));
+            currency_balance.create_index( bsoncxx::from_json( R"xxx({ "balance" : -1 })xxx" ));
+            // transfer history
+            auto transfer_history = mongo_conn[db_name][transfer_history_col];
+            transfer_history.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1 })xxx" ));
+            transfer_history.create_index( bsoncxx::from_json( R"xxx({ "from" : -1 })xxx" ));
+            transfer_history.create_index( bsoncxx::from_json( R"xxx({ "to" : -1 })xxx" ));
 
          } catch (...) {
             handle_mongo_exception( "create indexes", __LINE__ );
+         }
+      }
+
+      if( expire_after_seconds > 0 ) {
+         try {
+            mongocxx::collection block_states = mongo_conn[db_name][block_states_col];
+            create_expiration_index( block_states, expire_after_seconds );
+            mongocxx::collection blocks = mongo_conn[db_name][blocks_col];
+            create_expiration_index( blocks, expire_after_seconds );
+            mongocxx::collection trans = mongo_conn[db_name][trans_col];
+            create_expiration_index( trans, expire_after_seconds );
+            mongocxx::collection trans_traces = mongo_conn[db_name][trans_traces_col];
+            create_expiration_index( trans_traces, expire_after_seconds );
+            mongocxx::collection action_traces = mongo_conn[db_name][action_traces_col];
+            create_expiration_index( action_traces, expire_after_seconds );
+         } catch(...) {
+            handle_mongo_exception( "create expiration indexes", __LINE__ );
          }
       }
    } catch (...) {
@@ -1459,7 +1687,7 @@ void mongo_db_plugin_impl::init() {
 
    ilog("starting db plugin thread");
 
-   consume_thread = boost::thread([this] { consume_blocks(); });
+   consume_thread = std::thread([this] { consume_blocks(); });
 
    startup = false;
 }
@@ -1505,6 +1733,8 @@ void mongo_db_plugin::set_program_options(options_description& cli, options_desc
           "Enables storing transaction traces in mongodb.")
          ("mongodb-store-action-traces", bpo::value<bool>()->default_value(true),
           "Enables storing action traces in mongodb.")
+         ("mongodb-expire-after-seconds", bpo::value<uint32_t>()->default_value(0),
+          "Enables expiring data in mongodb after a specified number of seconds.")
          ("mongodb-filter-on", bpo::value<vector<string>>()->composing(),
           "Track actions which match receiver:action:actor. Receiver, Action, & Actor may be blank to include all. i.e. fscio:: or :transfer:  Use * or leave unspecified to include all.")
          ("mongodb-filter-out", bpo::value<vector<string>>()->composing(),
@@ -1562,6 +1792,9 @@ void mongo_db_plugin::plugin_initialize(const variables_map& options)
          if( options.count( "mongodb-store-action-traces" )) {
             my->store_action_traces = options.at( "mongodb-store-action-traces" ).as<bool>();
          }
+         if( options.count( "mongodb-expire-after-seconds" )) {
+            my->expire_after_seconds = options.at( "mongodb-expire-after-seconds" ).as<uint32_t>();
+         }
          if( options.count( "mongodb-filter-on" )) {
             auto fo = options.at( "mongodb-filter-on" ).as<vector<string>>();
             my->filter_on_star = false;
@@ -1611,6 +1844,8 @@ void mongo_db_plugin::plugin_initialize(const variables_map& options)
          FSC_ASSERT( chain_plug, chain::missing_chain_plugin_exception, ""  );
          auto& chain = chain_plug->chain();
          my->chain_id.emplace( chain.get_chain_id());
+
+         my->chain_plug_handle = chain_plug;
 
          my->accepted_block_connection.emplace( chain.accepted_block.connect( [&]( const chain::block_state_ptr& bs ) {
             my->accepted_block( bs );
