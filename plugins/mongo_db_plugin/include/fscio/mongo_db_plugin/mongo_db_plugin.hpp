@@ -50,13 +50,23 @@ public:
       }
    };
 
-   struct transferext {
-      std::string                     from_address;
-      std::string                     to_address;
-      asset                           quantity;
-      std::string                     memo;
+   struct addlimitlog {
+      uint64_t                        block_id;
+      account_name                    account;
+      double                          limit_double;
+      uint8_t                         transfer_type;
+      std::string                     transfer_symbol;
       static action_name get_name() {
-         return N(transferext);
+         return N(addlimitlog);
+      }
+   };
+
+   struct endreward {
+      uint64_t                        block_id;
+      account_name                    account;
+      asset                           quantity;
+      static action_name get_name() {
+         return N(endreward);
       }
    };
 
@@ -65,6 +75,7 @@ private:
 };
 
 }
-FC_REFLECT( eosio::mongo_db_plugin::transfer                         , (from)(to)(quantity)(memo) )
-FC_REFLECT( eosio::mongo_db_plugin::transferext                      , (from_address)(to_address)(quantity)(memo) )
+FC_REFLECT( fscio::mongo_db_plugin::transfer                         , (from)(to)(quantity)(memo) )
+FC_REFLECT( fscio::mongo_db_plugin::addlimitlog                      , (block_id)(account)(limit_double)(transfer_type)(transfer_symbol) )
+FC_REFLECT( fscio::mongo_db_plugin::endreward                        , (block_id)(account)(quantity) )
 

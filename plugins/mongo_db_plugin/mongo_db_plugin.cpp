@@ -211,13 +211,30 @@ public:
    mongocxx::collection _currency_balance;
    static const std::string currency_balance_col;
    chain_plugin* chain_plug_handle;
-   void update_currency_balance( const chain::action_trace& atrace, string symbol_name,
+   void update_currency_balance( const chain::action_trace& atrace, account_name receiver,
+                                 string symbol_name,
                                  const std::chrono::milliseconds& now,
 								         const std::chrono::milliseconds& block_time );
    // transfer history
    mongocxx::collection _transfer_history;
    static const std::string transfer_history_col;
    void update_transfer_history( const chain::action_trace& atrace,
+                                 const chain::transaction_trace_ptr& t,
+                                 bool executed, const std::chrono::milliseconds& now,
+                                 const std::chrono::milliseconds& block_time);
+   
+   // addlimitlog history
+   mongocxx::collection _addlimitlog_history;
+   static const std::string addlimitlog_history_col;
+   void update_addlimitlog_history( const chain::action_trace& atrace,
+                                 const chain::transaction_trace_ptr& t,
+                                 bool executed, const std::chrono::milliseconds& now,
+                                 const std::chrono::milliseconds& block_time);
+
+   // endreward history
+   mongocxx::collection _endreward_history;
+   static const std::string endreward_history_col;
+   void update_endreward_history( const chain::action_trace& atrace,
                                  const chain::transaction_trace_ptr& t,
                                  bool executed, const std::chrono::milliseconds& now,
                                  const std::chrono::milliseconds& block_time);
@@ -240,6 +257,8 @@ const std::string mongo_db_plugin_impl::pub_keys_col = "pub_keys";
 const std::string mongo_db_plugin_impl::account_controls_col = "account_controls";
 const std::string mongo_db_plugin_impl::currency_balance_col = "currency_balance";
 const std::string mongo_db_plugin_impl::transfer_history_col = "transfer_history";
+const std::string mongo_db_plugin_impl::addlimitlog_history_col = "addlimitlog_history";
+const std::string mongo_db_plugin_impl::endreward_history_col = "endreward_history";
 
 bool mongo_db_plugin_impl::filter_include( const account_name& receiver, const action_name& act_name,
                                            const vector<chain::permission_level>& authorization ) const
@@ -426,6 +445,8 @@ void mongo_db_plugin_impl::consume_blocks() {
       _account_controls = mongo_conn[db_name][account_controls_col];
       _currency_balance = mongo_conn[db_name][currency_balance_col];
       _transfer_history = mongo_conn[db_name][transfer_history_col];
+      _addlimitlog_history = mongo_conn[db_name][addlimitlog_history_col];
+      _endreward_history = mongo_conn[db_name][endreward_history_col];
 
       while (true) {
          std::unique_lock<std::mutex> lock(mtx);
@@ -863,11 +884,26 @@ mongo_db_plugin_impl::add_action_trace( mongocxx::bulk_write& bulk_action_traces
    const auto block_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::microseconds{atrace.block_time.to_time_point().time_since_epoch().count()} );
 
+   // ilog( "${a}'s act.name: ${b}", ("a", atrace.receipt.receiver.to_string())("b", atrace.act.name.to_string()) );
+
    if( executed && atrace.receipt.receiver == chain::config::system_account_name ) {
       update_account( atrace, now, block_time );
    }
    else if( atrace.act.name == name("transfer")) {
       update_transfer_history( atrace, t, executed, now, block_time );
+   } else if(atrace.act.name == name("matchlimit")) {
+      vector<chain::action_trace> atraces = atrace.inline_traces;
+      for(int i = 0; i < atraces.size(); ++i) {
+         ilog( "${a}'s act.name: ${b}", ("a", atraces.at(i).receipt.receiver.to_string())("b", atraces.at(i).act.name.to_string()) );
+         if( atraces.at(i).act.name == name("transfer")) {
+            update_transfer_history( atraces.at(i), t, executed, now, block_time );
+         }
+         else if(atraces.at(i).act.name == name("addlimitlog")) {
+            update_addlimitlog_history( atraces.at(i), t, executed, now, block_time );
+         } else if(atraces.at(i).act.name == name("endreward")) {
+            update_endreward_history( atraces.at(i), t, executed, now, block_time );
+         }
+      }
    }
 
    bool added = false;
@@ -1316,7 +1352,7 @@ void create_account( mongocxx::collection& accounts, const name& name, const std
    auto update = make_document(
          kvp( "$set", make_document( kvp( "name", name_str),
                                      kvp( "block_time", b_date{block_time}),
-                                     kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
+                                     kvp( "block_timestamp", block_time.count()),
                                      kvp( "createdAt", b_date{now} ))));
    try {
       if( !accounts.update_one( make_document( kvp( "name", name_str )), update.view(), update_opts )) {
@@ -1398,12 +1434,10 @@ void mongo_db_plugin_impl::update_account(const chain::action_trace& atrace, con
    }
 }
 
-void mongo_db_plugin_impl::update_currency_balance( const chain::action_trace& atrace, string symbol_name, const std::chrono::milliseconds& now, const std::chrono::milliseconds& block_time ) {
+void mongo_db_plugin_impl::update_currency_balance( const chain::action_trace& atrace, account_name receiver, string symbol_name, const std::chrono::milliseconds& now, const std::chrono::milliseconds& block_time ) {
    using namespace bsoncxx::types;
    using bsoncxx::builder::basic::kvp;
    using bsoncxx::builder::basic::make_document;
-
-   auto receiver = atrace.receipt.receiver;
 
    chain_apis::read_only::get_currency_balance_params params = chain_apis::read_only::get_currency_balance_params {
       .code    = atrace.act.account,
@@ -1430,7 +1464,7 @@ void mongo_db_plugin_impl::update_currency_balance( const chain::action_trace& a
                               kvp( "precision", b_int32{static_cast<int32_t>(balance.precision())}),
                               kvp( "symbol", balance.symbol_name()),
                               kvp( "block_time", b_date{block_time}),
-                              kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
+                              kvp( "block_timestamp", block_time.count()),
                               kvp( "updatedAt", b_date{now} ))
             )
          );
@@ -1460,7 +1494,7 @@ void mongo_db_plugin_impl::update_transfer_history( const chain::action_trace& a
 
    auto receiver = atrace.receipt.receiver;
    auto transfer_data = fc::raw::unpack<mongo_db_plugin::transfer>(atrace.act.data);
-   if(receiver == transfer_data.from) { // Filter only records once
+   /*if(receiver == transfer_data.from) */{ // Filter only records once
       mongocxx::options::update update_opts{};
       update_opts.upsert( true );
 
@@ -1475,12 +1509,13 @@ void mongo_db_plugin_impl::update_transfer_history( const chain::action_trace& a
                            kvp( "quantity", transfer_data.quantity.to_real()),
                            kvp( "symbol", transfer_data.quantity.symbol_name()),
                            kvp( "precision", transfer_data.quantity.precision()),
+                           kvp( "memo", transfer_data.memo),
                            kvp( "valid", b_bool{t->receipt.valid()} ),
                            kvp( "status", b_int32{static_cast<int32_t>(t->receipt->status)}),
                            kvp( "irreversible", b_bool{false} ),
                            kvp( "elapsed", atrace.elapsed.count() ),
                            kvp( "block_time", b_date{block_time}),
-                           kvp( "block_timestamp", b_int32{static_cast<int32_t>(block_time.count())}),
+                           kvp( "block_timestamp", block_time.count()),
                            kvp( "createdAt", b_date{now} ))
          )
       );
@@ -1488,7 +1523,9 @@ void mongo_db_plugin_impl::update_transfer_history( const chain::action_trace& a
       try {
          if( !_transfer_history.update_one( make_document( 
             kvp( "trx_id", atrace.trx_id.str() ), 
-            kvp( "block_num", b_int32{static_cast<int32_t>(atrace.block_num)})), 
+            kvp( "block_num", b_int32{static_cast<int32_t>(atrace.block_num)}), 
+            kvp( "from", transfer_data.from.to_string()),
+            kvp( "to", transfer_data.to.to_string())),
             update.view(), update_opts )) {
             FSC_ASSERT( false, chain::mongo_db_update_fail, "Failed to insert trx_id ${n}", ("n", atrace.trx_id.str()));
          }
@@ -1496,7 +1533,82 @@ void mongo_db_plugin_impl::update_transfer_history( const chain::action_trace& a
          handle_mongo_exception( "update_transfer_history", __LINE__ );
       }
    }
-   update_currency_balance(atrace, transfer_data.quantity.symbol_name(), now, block_time);
+   update_currency_balance(atrace, transfer_data.from, transfer_data.quantity.symbol_name(), now, block_time);
+   update_currency_balance(atrace, transfer_data.to, transfer_data.quantity.symbol_name(), now, block_time);
+}
+
+void mongo_db_plugin_impl::update_addlimitlog_history( const chain::action_trace& atrace,
+                                        const chain::transaction_trace_ptr& t,
+                                        bool executed, const std::chrono::milliseconds& now,
+                                        const std::chrono::milliseconds& block_time) {
+   using namespace bsoncxx::types;
+   using bsoncxx::builder::basic::kvp;
+   using bsoncxx::builder::basic::make_document;
+
+   auto receiver = atrace.receipt.receiver;
+   auto addlimitlog_data = fc::raw::unpack<mongo_db_plugin::addlimitlog>(atrace.act.data);
+   /*if(receiver == transfer_data.from) */{ // Filter only records once
+      auto doc = make_document( 
+                           kvp( "trx_id", atrace.trx_id.str()),
+                           //kvp( "block_id", block_id_str ),
+                           kvp( "block_id", b_int32{static_cast<int32_t>(addlimitlog_data.block_id)}),
+                           kvp( "account", addlimitlog_data.account.to_string()),
+                           kvp( "limit_double", addlimitlog_data.limit_double),
+                           kvp( "transfer_mode", b_int32{static_cast<int32_t>(addlimitlog_data.transfer_type)}),
+                           kvp( "transfer_symbol", addlimitlog_data.transfer_symbol),
+                           kvp( "valid", b_bool{t->receipt.valid()} ),
+                           kvp( "status", b_int32{static_cast<int32_t>(t->receipt->status)}),
+                           kvp( "irreversible", b_bool{false} ),
+                           kvp( "elapsed", atrace.elapsed.count() ),
+                           kvp( "block_time", b_date{block_time}),
+                           kvp( "block_timestamp", block_time.count()),
+                           kvp( "createdAt", b_date{now} ));
+
+      try {
+         if( !_addlimitlog_history.insert_one(doc.view())) {
+            FSC_ASSERT( false, chain::mongo_db_insert_fail, "Failed to insert trans ${id}", ("id", t->id) );
+         }
+      } catch (...) {
+         handle_mongo_exception( "_addlimitlog_history", __LINE__ );
+      }
+   }
+}
+
+void mongo_db_plugin_impl::update_endreward_history( const chain::action_trace& atrace,
+                                        const chain::transaction_trace_ptr& t,
+                                        bool executed, const std::chrono::milliseconds& now,
+                                        const std::chrono::milliseconds& block_time) {
+   using namespace bsoncxx::types;
+   using bsoncxx::builder::basic::kvp;
+   using bsoncxx::builder::basic::make_document;
+
+   auto receiver = atrace.receipt.receiver;
+   auto endreward_data = fc::raw::unpack<mongo_db_plugin::endreward>(atrace.act.data);
+   /*if(receiver == transfer_data.from) */{ // Filter only records once
+      auto doc = make_document( 
+                           kvp( "trx_id", atrace.trx_id.str()),
+                           //kvp( "block_id", block_id_str ),
+                           kvp( "block_id", b_int32{static_cast<int32_t>(endreward_data.block_id)}),
+                           kvp( "account", endreward_data.account.to_string()),
+                           kvp( "quantity", endreward_data.quantity.to_real()),
+                           kvp( "symbol", endreward_data.quantity.symbol_name()),
+                           kvp( "precision", endreward_data.quantity.precision()),
+                           kvp( "valid", b_bool{t->receipt.valid()} ),
+                           kvp( "status", b_int32{static_cast<int32_t>(t->receipt->status)}),
+                           kvp( "irreversible", b_bool{false} ),
+                           kvp( "elapsed", atrace.elapsed.count() ),
+                           kvp( "block_time", b_date{block_time}),
+                           kvp( "block_timestamp", block_time.count()),
+                           kvp( "createdAt", b_date{now} ));
+
+      try {
+         if( !_endreward_history.insert_one( doc.view())) {
+            FSC_ASSERT( false, chain::mongo_db_insert_fail, "Failed to insert trans ${id}", ("id", t->id) );
+         }
+      } catch (...) {
+         handle_mongo_exception( "_endreward_history", __LINE__ );
+      }
+   }
 }
 
 mongo_db_plugin_impl::mongo_db_plugin_impl()
@@ -1535,6 +1647,8 @@ void mongo_db_plugin_impl::wipe_database() {
    auto account_controls = mongo_conn[db_name][account_controls_col];
    auto currency_balance = mongo_conn[db_name][currency_balance_col];
    auto transfer_history = mongo_conn[db_name][transfer_history_col];
+   auto addlimitlog_history = mongo_conn[db_name][addlimitlog_history_col];
+   auto endreward_history = mongo_conn[db_name][endreward_history_col];
 
    block_states.drop();
    blocks.drop();
@@ -1546,6 +1660,8 @@ void mongo_db_plugin_impl::wipe_database() {
    account_controls.drop();
    currency_balance.drop();
    transfer_history.drop();
+   addlimitlog_history.drop();
+   endreward_history.drop();
    ilog("done wipe_database");
 }
 
@@ -1613,7 +1729,7 @@ void mongo_db_plugin_impl::init() {
 
          try {
             // MongoDB administrators (to enable sharding) :
-            //   1. enableSharding database (default to EOS)
+            //   1. enableSharding database (default to FSC)
             //   2. shardCollection: blocks, action_traces, transaction_traces, especially action_traces
             //   3. Compound index with shard key (default to _id below), to improve query performance.
 
@@ -1659,6 +1775,16 @@ void mongo_db_plugin_impl::init() {
             transfer_history.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1 })xxx" ));
             transfer_history.create_index( bsoncxx::from_json( R"xxx({ "from" : -1 })xxx" ));
             transfer_history.create_index( bsoncxx::from_json( R"xxx({ "to" : -1 })xxx" ));
+
+            auto addlimitlog_history = mongo_conn[db_name][addlimitlog_history_col];
+            addlimitlog_history.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1 })xxx" ));
+            addlimitlog_history.create_index( bsoncxx::from_json( R"xxx({ "block_id" : -1 })xxx" ));
+            addlimitlog_history.create_index( bsoncxx::from_json( R"xxx({ "account" : -1 })xxx" ));
+
+            auto endreward_history = mongo_conn[db_name][endreward_history_col];
+            endreward_history.create_index( bsoncxx::from_json( R"xxx({ "trx_id" : 1 })xxx" ));
+            endreward_history.create_index( bsoncxx::from_json( R"xxx({ "block_id" : -1 })xxx" ));
+            endreward_history.create_index( bsoncxx::from_json( R"xxx({ "account" : -1 })xxx" ));
 
          } catch (...) {
             handle_mongo_exception( "create indexes", __LINE__ );
